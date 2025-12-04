@@ -1,0 +1,5 @@
+{
+  "name": "WalletRPC",
+  "description": "纯RPC调用的Wallet钱包",
+  "requestFramePermissions": []
+}

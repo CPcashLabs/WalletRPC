@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ZeroState Hub</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+      :root {
+        --bg-slate-50: #f8fafc;
+        --bg-slate-100: #f1f5f9;
+        --bg-slate-200: #e2e8f0;
+        --bg-slate-800: #1e293b;
+        --bg-slate-900: #0f172a;
+        --text-slate-300: #cbd5e1;
+        --text-slate-400: #94a3b8;
+        --text-slate-500: #64748b;
+        --text-slate-600: #475569;
+        --text-slate-900: #0f172a;
+        --text-white: #ffffff;
+        --primary-600: #4f46e5;
+        --primary-700: #4338ca;
+        --danger-600: #dc2626;
+        --success-600: #16a34a;
+        --font-sans: 'Inter', sans-serif;
+      }
+
+      body {
+        margin: 0;
+        font-family: var(--font-sans);
+        background-color: var(--bg-slate-50);
+        color: var(--text-slate-900);
+      }
+
+      /* Utility Replacements for Tailwind */
+      .flex { display: flex; }
+      .flex-col { flex-direction: column; }
+      .items-center { align-items: center; }
+      .justify-center { justify-content: center; }
+      .justify-between { justify-content: space-between; }
+      .space-x-2 > * + * { margin-left: 0.5rem; }
+      .space-x-3 > * + * { margin-left: 0.75rem; }
+      .space-y-4 > * + * { margin-top: 1rem; }
+      .space-y-6 > * + * { margin-top: 1.5rem; }
+      .space-y-8 > * + * { margin-top: 2rem; }
+      
+      .w-full { width: 100%; }
+      .h-screen { height: 100vh; }
+      .w-64 { width: 16rem; }
+      .flex-1 { flex: 1; }
+      
+      .p-4 { padding: 1rem; }
+      .p-6 { padding: 1.5rem; }
+      .p-8 { padding: 2rem; }
+      .py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+      .px-3 { padding-left: 0.75rem; padding-right: 0.75rem; }
+      .px-4 { padding-left: 1rem; padding-right: 1rem; }
+      .mb-2 { margin-bottom: 0.5rem; }
+      .mb-4 { margin-bottom: 1rem; }
+      .mb-6 { margin-bottom: 1.5rem; }
+      .mt-4 { margin-top: 1rem; }
+      .mr-2 { margin-right: 0.5rem; }
+      
+      .bg-white { background-color: #fff; }
+      .bg-slate-50 { background-color: var(--bg-slate-50); }
+      .bg-slate-900 { background-color: var(--bg-slate-900); }
+      .bg-indigo-600 { background-color: var(--primary-600); }
+      
+      .text-white { color: var(--text-white); }
+      .text-slate-300 { color: var(--text-slate-300); }
+      .text-slate-500 { color: var(--text-slate-500); }
+      .text-slate-900 { color: var(--text-slate-900); }
+      .text-sm { font-size: 0.875rem; }
+      .text-xs { font-size: 0.75rem; }
+      .text-lg { font-size: 1.125rem; }
+      .text-xl { font-size: 1.25rem; }
+      .text-2xl { font-size: 1.5rem; }
+      .font-bold { font-weight: 700; }
+      .font-medium { font-weight: 500; }
+      
+      .rounded-lg { border-radius: 0.5rem; }
+      .rounded-xl { border-radius: 0.75rem; }
+      .rounded-full { border-radius: 9999px; }
+      
+      .border { border: 1px solid #e2e8f0; }
+      .border-b { border-bottom: 1px solid #e2e8f0; }
+      .border-slate-200 { border-color: var(--bg-slate-200); }
+      .border-slate-800 { border-color: #334155; }
+      
+      .shadow-sm { box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); }
+      
+      /* Grid */
+      .grid { display: grid; }
+      .grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+      .gap-6 { gap: 1.5rem; }
+      @media (min-width: 768px) {
+        .md\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .md\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      }
+      @media (min-width: 1024px) {
+        .lg\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      }
+
+      /* Interactive */
+      button { cursor: pointer; }
+      .hover\:bg-slate-800:hover { background-color: #1e293b; }
+      .hover\:bg-indigo-700:hover { background-color: var(--primary-700); }
+      
+      /* Form */
+      input, select, textarea {
+        display: block;
+        width: 100%;
+        border-radius: 0.5rem;
+        border: 1px solid #cbd5e1;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.875rem;
+        box-sizing: border-box; 
+      }
+      input:focus, select:focus, textarea:focus {
+        outline: 2px solid var(--primary-600);
+        border-color: transparent;
+      }
+      
+      /* Sidebar specific fixes */
+      .fixed { position: fixed; }
+      .overflow-y-auto { overflow-y: auto; }
+      .ml-64 { margin-left: 16rem; }
+      
+      /* Utilities specific to Wallet */
+      .font-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+      .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+      /* --- Tech Animations --- */
+      
+      /* 1. Smooth Entry */
+      @keyframes techSlideIn {
+        from { opacity: 0; transform: translateY(8px) scale(0.99); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+      }
+      .animate-tech-in {
+        animation: techSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+      
+      /* 2. List Item Stagger */
+      .animate-stagger-1 { animation-delay: 0.05s; }
+      .animate-stagger-2 { animation-delay: 0.1s; }
+      .animate-stagger-3 { animation-delay: 0.15s; }
+
+      /* 3. Button Click/Tap Effect */
+      .btn-tech-press {
+        transition: transform 0.1s ease, box-shadow 0.2s ease;
+      }
+      .btn-tech-press:active {
+        transform: scale(0.97);
+      }
+      
+      /* 4. Glowing Scanline Border for active states */
+      @keyframes scanlineMove {
+        0% { background-position: 0% 0%; }
+        100% { background-position: 200% 0%; }
+      }
+      .tech-border-glow {
+        position: relative;
+        overflow: hidden;
+      }
+      .tech-border-glow::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        height: 2px;
+        width: 100%;
+        background: linear-gradient(90deg, transparent, #4f46e5, #ec4899, transparent);
+        background-size: 200% 100%;
+        animation: scanlineMove 2s linear infinite;
+        opacity: 0.8;
+      }
+
+      /* 5. Error Shake */
+      @keyframes shake {
+        0%, 100% { transform: translateX(0); }
+        10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+        20%, 40%, 60%, 80% { transform: translateX(4px); }
+      }
+      .animate-shake {
+        animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
+      }
+
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "@google/genai": "https://esm.sh/@google/genai@0.1.1",
+    "lucide-react": "https://esm.sh/lucide-react@0.263.1",
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+    "react-dom": "https://esm.sh/react-dom@18.2.0",
+    "react": "https://esm.sh/react@18.2.0",
+    "react/jsx-runtime": "https://esm.sh/react@18.2.0/jsx-runtime",
+    "react-markdown": "https://esm.sh/react-markdown@9.0.0",
+    "ethers": "https://esm.sh/ethers@6.13.4",
+    "bs58": "https://esm.sh/bs58@5.0.0",
+    "@noble/hashes/sha256": "https://esm.sh/@noble/hashes@1.3.3/sha256",
+    "@noble/hashes/ripemd160": "https://esm.sh/@noble/hashes@1.3.3/ripemd160",
+    "tweetnacl": "https://esm.sh/tweetnacl@1.0.3",
+    "three": "https://esm.sh/three@0.160.0",
+    "tronweb": "https://esm.sh/tronweb@5.3.0",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "vite": "https://aistudiocdn.com/vite@^7.2.4",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "@noble/hashes/": "https://aistudiocdn.com/@noble/hashes@^2.0.1/"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
