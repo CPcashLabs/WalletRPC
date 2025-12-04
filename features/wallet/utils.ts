@@ -13,17 +13,13 @@ export const normalizeHex = (hex: string) => {
 };
 
 export const getExplorerLink = (chain: ChainConfig, hash: string) => {
-  // Remove potential trailing slashes from config to avoid double slashes
-  const baseUrl = chain.explorerUrl.replace(/\/$/, "");
-  
-  if (chain.chainType === 'TRON') {
-    // Tronscan format: https://tronscan.org/#/transaction/{hash}
-    return `${baseUrl}/#/transaction/${hash}`;
-  }
-  
-  // Standard EVM: https://scan.com/tx/{hash}
-  // BTT Testnet specifically uses /tx/
-  return `${baseUrl}/tx/${hash}`;
+  if (!chain.explorer || !chain.explorer.txPath) return "#";
+  return chain.explorer.txPath.replace("{txid}", hash);
+};
+
+export const getExplorerAddressLink = (chain: ChainConfig, address: string) => {
+  if (!chain.explorer || !chain.explorer.addressPath) return "#";
+  return chain.explorer.addressPath.replace("{address}", address);
 };
 
 export const handleTxError = (e: any) => {

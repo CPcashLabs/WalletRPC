@@ -31,8 +31,10 @@ export const useWalletState = (initialChainId: number) => {
 
   // --- UI/视图状态 ---
 
-  /** 当前主视图 */
-  const [view, setView] = useState<'onboarding' | 'dashboard' | 'send' | 'create_safe' | 'add_safe' | 'safe_queue' | 'settings'>('onboarding');
+  /** 当前主视图 
+   * intro_animation: 导入成功后的粒子动画过场
+   */
+  const [view, setView] = useState<'onboarding' | 'intro_animation' | 'dashboard' | 'send' | 'create_safe' | 'add_safe' | 'safe_queue' | 'settings'>('onboarding');
   
   /** 导入输入框的值 */
   const [privateKeyOrPhrase, setPrivateKeyOrPhrase] = useState('');
@@ -59,8 +61,9 @@ export const useWalletState = (initialChainId: number) => {
   /**
    * 处理钱包导入
    * 解析私钥或助记词，并同时生成 EVM 和 Tron 地址。
+   * @returns Promise<boolean> 导入是否成功
    */
-  const handleImport = async () => {
+  const handleImport = async (): Promise<boolean> => {
     setError(null);
     try {
       const input = privateKeyOrPhrase.trim();
@@ -83,10 +86,13 @@ export const useWalletState = (initialChainId: number) => {
 
       setWallet(newWallet);
       setTronWalletAddress(derivedTronAddr);
-      setView('dashboard');
+      // 注意：这里不再直接 setView('intro_animation')
+      // 而是返回 true，让 UI 层控制动画时机
+      return true;
     } catch (e) {
       console.error(e);
       setError("无效的私钥或助记词");
+      return false;
     }
   };
 

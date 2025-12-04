@@ -5,8 +5,18 @@ export const tronNile: ChainData = {
   id: 2494104990,
   name: 'Tron Nile Testnet',
   defaultRpcUrl: 'https://nile.trongrid.io',
+  publicRpcUrls: [
+    'https://nile.trongrid.io',
+    'https://nile.trongrid.io/jsonrpc'
+  ],
   currencySymbol: 'TRX',
-  explorerUrl: 'https://nile.tronscan.org',
+  explorer: {
+    name: 'TronScan (Nile)',
+    key: 'tronscan_nile',
+    url: 'https://nile.tronscan.org',
+    txPath: 'https://nile.tronscan.org/#/transaction/{txid}',
+    addressPath: 'https://nile.tronscan.org/#/address/{address}'
+  },
   chainType: 'TRON',
   isTestnet: true,
   tokens: [

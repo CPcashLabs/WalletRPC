@@ -1,8 +1,12 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { Settings, ArrowLeft, Zap, Coins } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
-import { ChainConfig, TokenConfig } from '../types';
+import { ChainConfig, TokenConfig, TransactionRecord } from '../types';
+import { ProcessResult } from '../hooks/useTransactionManager';
+import { TransferStateView, TransferStatus } from './TransferStateView';
+import { getExplorerLink } from '../utils';
 
 export interface SendFormData {
   recipient: string;
@@ -20,8 +24,9 @@ interface SendFormProps {
   balances: Record<string, string>;
   activeAccountType: 'EOA' | 'SAFE';
   recommendedNonce: number;
-  onSend: (data: SendFormData) => void;
+  onSend: (data: SendFormData) => Promise<ProcessResult>;
   onBack: () => void;
+  transactions: TransactionRecord[]; // Needed to watch for updates
 }
 
 export const SendForm: React.FC<SendFormProps> = ({
@@ -31,7 +36,8 @@ export const SendForm: React.FC<SendFormProps> = ({
   activeAccountType,
   recommendedNonce,
   onSend,
-  onBack
+  onBack,
+  transactions
 }) => {
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
@@ -41,6 +47,23 @@ export const SendForm: React.FC<SendFormProps> = ({
   const [gasLimit, setGasLimit] = useState('');
   const [customNonce, setCustomNonce] = useState<string>('');
   const [isAdvancedSend, setIsAdvancedSend] = useState(false);
+  
+  // Animation State
+  const [transferStatus, setTransferStatus] = useState<TransferStatus>('idle');
+  const [txHash, setTxHash] = useState<string | undefined>();
+  const [errorMsg, setErrorMsg] = useState<string | undefined>();
+
+  // Watch for transaction updates while in 'timeout' (polling) state
+  useEffect(() => {
+    if (transferStatus === 'timeout' && txHash) {
+        // Find the specific transaction in the global list
+        const tx = transactions.find(t => t.hash === txHash);
+        // If it flipped to confirmed, update UI to success immediately
+        if (tx && tx.status === 'confirmed') {
+            setTransferStatus('success');
+        }
+    }
+  }, [transactions, txHash, transferStatus]);
 
   useEffect(() => {
     // Optional: Pre-fill or logic based on props
@@ -50,8 +73,12 @@ export const SendForm: React.FC<SendFormProps> = ({
     return balances[selectedAsset] || '0.00';
   };
 
-  const handleSend = () => {
-    onSend({
+  const handleSend = async () => {
+    setTransferStatus('sending');
+    setTxHash(undefined);
+    setErrorMsg(undefined);
+
+    const result = await onSend({
       recipient,
       amount,
       asset: selectedAsset,
@@ -60,7 +87,40 @@ export const SendForm: React.FC<SendFormProps> = ({
       gasLimit,
       nonce: customNonce ? parseInt(customNonce) : undefined
     });
+
+    if (result.success) {
+      if (result.isTimeout) {
+         setTransferStatus('timeout');
+      } else {
+         setTransferStatus('success');
+      }
+      setTxHash(result.hash);
+    } else {
+      setTransferStatus('error');
+      setErrorMsg(result.error);
+    }
   };
+  
+  // If we are in any active transfer state, show the animation view
+  if (transferStatus !== 'idle') {
+    return (
+        <div className="max-w-md mx-auto animate-tech-in bg-white rounded-2xl shadow-lg border border-slate-100 min-h-[400px] flex items-center justify-center">
+            <TransferStateView 
+                status={transferStatus}
+                txHash={txHash}
+                error={errorMsg}
+                onClose={() => {
+                   if (transferStatus === 'success' || transferStatus === 'timeout') {
+                      onBack(); // Go back to dashboard on finish
+                   } else {
+                      setTransferStatus('idle'); // Go back to form on error
+                   }
+                }}
+                explorerUrl={txHash ? getExplorerLink(activeChain, txHash) : undefined}
+            />
+        </div>
+    );
+  }
 
   return (
     <div className="max-w-md mx-auto animate-tech-in">

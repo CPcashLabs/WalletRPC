@@ -5,8 +5,20 @@ export const bsc: ChainData = {
   id: 56,
   name: 'BNB Smart Chain',
   defaultRpcUrl: 'https://binance.llamarpc.com',
+  publicRpcUrls: [
+    'https://binance.llamarpc.com',
+    'https://bsc-dataseed.binance.org',
+    'https://rpc.ankr.com/bsc',
+    'https://1rpc.io/bnb'
+  ],
   currencySymbol: 'BNB',
-  explorerUrl: 'https://bscscan.com',
+  explorer: {
+    name: 'BscScan',
+    key: 'bscscan',
+    url: 'https://bscscan.com',
+    txPath: 'https://bscscan.com/tx/{txid}',
+    addressPath: 'https://bscscan.com/address/{address}'
+  },
   chainType: 'EVM',
   tokens: [
     { symbol: 'USDT', name: 'Tether USD', address: '0x55d398326f99059fF775485246999027B3197955', decimals: 18 },

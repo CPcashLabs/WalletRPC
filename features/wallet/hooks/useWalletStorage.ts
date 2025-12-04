@@ -44,15 +44,26 @@ export const useWalletStorage = () => {
       // 2. 加载自定义链配置
       const savedChains = localStorage.getItem('zerostate_custom_chains');
       if (savedChains) {
-         const parsed = JSON.parse(savedChains);
-         setChains(prev => {
-            // 合并逻辑：保留默认链，追加去重后的自定义链
-            const combined = [...DEFAULT_CHAINS];
-            parsed.forEach((pc: ChainConfig) => {
-               if (!combined.find(c => c.id === pc.id)) combined.push(pc);
-            });
-            return combined;
+         const customChainConfigs: ChainConfig[] = JSON.parse(savedChains);
+         
+         // 合并逻辑:
+         // 1. 从 DEFAULT_CHAINS 开始
+         // 2. 如果 LocalStorage 中有相同 ID 的配置，则视为"用户覆盖 (Override)"，使用 LocalStorage 的版本
+         // 3. 如果 LocalStorage 中有新 ID，则视为"纯新增"，添加到列表
+         
+         const mergedChains = DEFAULT_CHAINS.map(defaultChain => {
+            const override = customChainConfigs.find(c => c.id === defaultChain.id);
+            return override ? { ...defaultChain, ...override, isCustom: true } : defaultChain;
          });
+
+         // 添加纯新增的链 (DEFAULT 中不存在的)
+         customChainConfigs.forEach(customChain => {
+            if (!mergedChains.find(c => c.id === customChain.id)) {
+               mergedChains.push(customChain);
+            }
+         });
+
+         setChains(mergedChains);
       }
 
       // 3. 加载自定义 Token
@@ -74,10 +85,11 @@ export const useWalletStorage = () => {
     localStorage.setItem('zerostate_tracked_safes', JSON.stringify(trackedSafes));
   }, [trackedSafes]);
 
-  // 监听 chains 变更，仅保存 isCustom 为 true 的链
+  // 监听 chains 变更，保存所有被标记为 isCustom 的链 (包含被修改的默认链)
   useEffect(() => {
-     const customOnly = chains.filter(c => c.isCustom);
-     localStorage.setItem('zerostate_custom_chains', JSON.stringify(customOnly));
+     // 过滤出有过修改或新增的链
+     const chainsToSave = chains.filter(c => c.isCustom);
+     localStorage.setItem('zerostate_custom_chains', JSON.stringify(chainsToSave));
   }, [chains]);
 
   // 监听 customTokens 变更并保存

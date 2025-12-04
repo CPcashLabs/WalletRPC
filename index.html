@@ -31,6 +31,8 @@
         font-family: var(--font-sans);
         background-color: var(--bg-slate-50);
         color: var(--text-slate-900);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
       }
 
       /* Utility Replacements for Tailwind */
@@ -126,26 +128,79 @@
       .font-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
       .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-      /* --- Tech Animations --- */
+      /* --- Tech Animations (Desktop Only) --- */
       
-      @keyframes techSlideIn {
-        from { opacity: 0; transform: translateY(8px) scale(0.99); }
-        to { opacity: 1; transform: translateY(0) scale(1); }
+      @media (hover: hover) and (pointer: fine) {
+        @keyframes techSlideIn {
+          from { opacity: 0; transform: translateY(20px) scale(0.95); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        
+        @keyframes float {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-10px); }
+        }
+
+        @keyframes glow-pulse {
+          0%, 100% { box-shadow: 0 0 15px rgba(79, 70, 229, 0.2); }
+          50% { box-shadow: 0 0 25px rgba(79, 70, 229, 0.5); }
+        }
+
+        .animate-tech-in {
+          animation: techSlideIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        .animate-float {
+          animation: float 6s ease-in-out infinite;
+        }
+
+        .hover-glow:hover {
+          animation: glow-pulse 2s infinite;
+        }
+
+        .btn-tech-press {
+          transition: transform 0.1s ease, box-shadow 0.2s ease, filter 0.2s ease;
+        }
+        .btn-tech-press:active {
+          transform: scale(0.97);
+        }
       }
-      .animate-tech-in {
-        animation: techSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-      }
+
+      /* --- Mobile Optimization (No Animation / High Contrast) --- */
       
+      @media (hover: none), (pointer: coarse) {
+        .animate-tech-in {
+          /* Immediate appearance for performance */
+          opacity: 1;
+          transform: none;
+        }
+        
+        /* High Contrast Gradient Borders for Mobile Safety Feel */
+        .mobile-safe-border {
+          position: relative;
+          background: #fff;
+          background-clip: padding-box;
+          border: 2px solid transparent;
+          border-radius: 1rem;
+        }
+        .mobile-safe-border::before {
+          content: '';
+          position: absolute;
+          top: 0; right: 0; bottom: 0; left: 0;
+          z-index: -1;
+          margin: -2px;
+          border-radius: inherit;
+          background: linear-gradient(to right, #4f46e5, #ec4899);
+        }
+        
+        .btn-tech-press:active {
+          opacity: 0.7; /* Simple opacity change */
+        }
+      }
+
       .animate-stagger-1 { animation-delay: 0.05s; }
       .animate-stagger-2 { animation-delay: 0.1s; }
       .animate-stagger-3 { animation-delay: 0.15s; }
-
-      .btn-tech-press {
-        transition: transform 0.1s ease, box-shadow 0.2s ease;
-      }
-      .btn-tech-press:active {
-        transform: scale(0.97);
-      }
 
       @keyframes shake {
         0%, 100% { transform: translateX(0); }

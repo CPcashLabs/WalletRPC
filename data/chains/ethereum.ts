@@ -5,8 +5,20 @@ export const ethereum: ChainData = {
   id: 1,
   name: 'Ethereum Mainnet',
   defaultRpcUrl: 'https://eth.llamarpc.com',
+  publicRpcUrls: [
+    'https://eth.llamarpc.com',
+    'https://rpc.ankr.com/eth',
+    'https://cloudflare-eth.com',
+    'https://1rpc.io/eth'
+  ],
   currencySymbol: 'ETH',
-  explorerUrl: 'https://etherscan.io',
+  explorer: {
+    name: 'Etherscan',
+    key: 'etherscan',
+    url: 'https://etherscan.io',
+    txPath: 'https://etherscan.io/tx/{txid}',
+    addressPath: 'https://etherscan.io/address/{address}'
+  },
   chainType: 'EVM',
   tokens: [
     { symbol: 'USDT', name: 'Tether USD', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6 },

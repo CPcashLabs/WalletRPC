@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import { TronService } from '../../../services/tronService';
 import { ERC20_ABI, SAFE_ABI } from '../config';
@@ -46,6 +46,19 @@ export const useWalletData = ({
   /** EOA 当前 Nonce (仅 EOA 模式) */
   const [currentNonce, setCurrentNonce] = useState<number>(0);
 
+  /** 初始数据加载完成标志 */
+  const [isInitialFetchDone, setIsInitialFetchDone] = useState(false);
+
+  // 当钱包重置时，重置状态
+  useEffect(() => {
+    if (!wallet) {
+      setBalance('0.00');
+      setTokenBalances({});
+      setSafeDetails(null);
+      setIsInitialFetchDone(false);
+    }
+  }, [wallet]);
+
   /**
    * 获取链上数据
    * 区分 EVM 和 TRON 的获取逻辑。
@@ -53,7 +66,8 @@ export const useWalletData = ({
   const fetchData = async () => {
     if (!wallet || !activeAddress) return;
     setIsLoading(true);
-    setError(null);
+    // 注意：不要在这里重置 setError(null)，允许静默刷新
+    // 也不要重置 isInitialFetchDone，因为它只表示"至少成功加载过一次"
 
     try {
       if (activeChain.chainType === 'TRON') {
@@ -114,6 +128,8 @@ export const useWalletData = ({
       else setError("数据获取失败: " + (e.message || "未知错误"));
     } finally {
       setIsLoading(false);
+      // 标记初始加载完成
+      setIsInitialFetchDone(true);
     }
   };
 
@@ -123,6 +139,7 @@ export const useWalletData = ({
     safeDetails,
     setSafeDetails,
     currentNonce,
+    isInitialFetchDone,
     fetchData
   };
 };

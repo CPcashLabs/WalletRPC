@@ -1,4 +1,5 @@
 
+
 export interface TokenDefinition {
   symbol: string;
   name: string;
@@ -11,12 +12,21 @@ export interface TokenConfig extends TokenDefinition {
   isCustom?: boolean;
 }
 
+export interface ExplorerConfig {
+  name: string;
+  key: string;
+  url: string;
+  txPath: string;      // Pattern: https://.../tx/{txid}
+  addressPath: string; // Pattern: https://.../address/{address}
+}
+
 export interface NetworkDefinition {
   id: number;
   name: string;
   defaultRpcUrl: string;
+  publicRpcUrls: string[];
   currencySymbol: string;
-  explorerUrl: string;
+  explorer: ExplorerConfig;
   isTestnet?: boolean;
   chainType?: 'EVM' | 'TRON';
 }
@@ -42,11 +52,11 @@ export interface TrackedSafe {
 
 export interface TransactionRecord {
   id: string;
+  chainId: number; // Added to track which network this tx belongs to
   hash?: string;
   status: 'queued' | 'submitted' | 'confirmed' | 'failed';
   timestamp: number;
   summary: string;
-  explorerUrl: string;
   error?: string;
 }
 

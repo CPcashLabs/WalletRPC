@@ -106,11 +106,11 @@ export const useSafeManager = ({
              
              addTransactionRecord({ 
                id: Date.now().toString(), 
+               chainId: activeChainId,
                hash: tx.hash, 
                status: 'submitted', 
                timestamp: Date.now(), 
-               summary: summary || "Safe 交易", 
-               explorerUrl: activeChain.explorerUrl 
+               summary: summary || "Safe 交易"
              });
              
              setNotification("Safe 交易已执行!");
@@ -162,11 +162,11 @@ export const useSafeManager = ({
         
         addTransactionRecord({ 
           id: Date.now().toString(), 
+          chainId: activeChainId,
           hash: execTx.hash, 
           status: 'submitted', 
           timestamp: Date.now(), 
-          summary: tx.summary, 
-          explorerUrl: activeChain.explorerUrl 
+          summary: tx.summary
         });
 
         setPendingSafeTxs(prev => prev.filter(p => p.id !== tx.id));

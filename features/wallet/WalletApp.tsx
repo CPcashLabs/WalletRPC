@@ -9,6 +9,7 @@ import { WalletDashboard } from './components/WalletDashboard';
 import { SendForm } from './components/SendForm';
 import { SafeQueue, SafeSettings, CreateSafe, TrackSafe } from './components/SafeViews';
 import { ChainModal, AddTokenModal, EditTokenModal } from './components/Modals';
+import { ParticleIntro } from '../../components/ui/ParticleIntro';
 
 const TechAlert: React.FC<{ type: 'error' | 'success'; message: string; onClose?: () => void }> = ({ type, message, onClose }) => (
   <div className={`
@@ -59,6 +60,7 @@ export const WalletApp: React.FC = () => {
     isMenuOpen,
     setIsMenuOpen,
     isLoading,
+    isInitialFetchDone, // From hook
     error,
     notification,
     isChainModalOpen,
@@ -98,19 +100,76 @@ export const WalletApp: React.FC = () => {
   const [localNotification, setLocalNotification] = React.useState<string | null>(null);
   React.useEffect(() => { if (notification) { setLocalNotification(notification); const t = setTimeout(() => setLocalNotification(null), 5000); return () => clearTimeout(t); } }, [notification]);
 
+  // --- Animation States ---
+  const [isOnboardingExiting, setIsOnboardingExiting] = React.useState(false);
+  const [isIntroFadingOut, setIsIntroFadingOut] = React.useState(false);
+  const [minTimePassed, setMinTimePassed] = React.useState(false);
+
+  // 1. Handle Import Trigger with Transition
+  const onImportWrapper = async () => {
+     const success = await handleImport();
+     if (success) {
+        setIsOnboardingExiting(true);
+        // Wait for exit animation (1s) before switching view
+        setTimeout(() => {
+           setView('intro_animation');
+           setIsOnboardingExiting(false);
+        }, 1000);
+     }
+  };
+
+  // 2. Reset state when entering onboarding
+  React.useEffect(() => {
+    if (view === 'onboarding') {
+      setIsIntroFadingOut(false);
+      setMinTimePassed(false);
+      setIsOnboardingExiting(false);
+    }
+  }, [view]);
+
+  // 3. Start minimum timer when entering animation
+  React.useEffect(() => {
+    if (view === 'intro_animation') {
+      const t = setTimeout(() => setMinTimePassed(true), 2500); // Minimum 2.5s duration
+      return () => clearTimeout(t);
+    }
+  }, [view]);
+
+  // 4. Trigger fade out when BOTH min time passed AND data is ready
+  React.useEffect(() => {
+    if (view === 'intro_animation' && minTimePassed && isInitialFetchDone) {
+      setIsIntroFadingOut(true);
+      
+      // Wait for CSS fade transition (1s) before switching view
+      const t = setTimeout(() => {
+        setView('dashboard');
+        // Reset states (optional, but good practice)
+        setIsIntroFadingOut(false);
+        setMinTimePassed(false);
+      }, 1000);
+      return () => clearTimeout(t);
+    }
+  }, [view, minTimePassed, isInitialFetchDone, setView]);
+
   if (view === 'onboarding' || !wallet) {
     return (
       <WalletOnboarding 
         input={privateKeyOrPhrase} 
         setInput={setPrivateKeyOrPhrase} 
-        onImport={handleImport} 
+        onImport={onImportWrapper} 
         error={error} 
+        isExiting={isOnboardingExiting}
       />
     );
   }
 
+  // Show Intro Animation (Full Screen Overlay)
+  if (view === 'intro_animation') {
+    return <ParticleIntro fadeOut={isIntroFadingOut} />;
+  }
+
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col">
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col animate-in fade-in duration-700">
       
       {/* App Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40 px-4 md:px-8 h-16 flex items-center justify-between shadow-sm">
@@ -175,22 +234,9 @@ export const WalletApp: React.FC = () => {
              </div>
          </div>
 
-         {/* Center (Desktop): Chain Selector */}
-         <div className="hidden md:flex items-center justify-center">
-            <div className="bg-slate-100 rounded-full p-1 flex items-center">
-               <select 
-                  value={activeChainId} 
-                  onChange={(e) => setActiveChainId(Number(e.target.value))}
-                  className="bg-transparent border-none text-sm font-bold text-slate-700 rounded-full px-4 py-1.5 focus:ring-0 cursor-pointer hover:text-indigo-600 transition-colors"
-               >
-                  {chains.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-               </select>
-            </div>
-         </div>
-
          {/* Right: Actions */}
          <div className="flex items-center gap-2">
-            <button onClick={() => setIsChainModalOpen(true)} className="p-2.5 hover:bg-slate-100 rounded-full text-slate-500 hover:text-slate-900 transition-colors" title="Network Settings">
+            <button onClick={() => setIsChainModalOpen(true)} className="p-2.5 hover:bg-slate-100 rounded-full text-slate-500 hover:text-slate-900 transition-colors" title="Settings & Network">
                <Settings className="w-5 h-5"/>
             </button>
             <div className="w-px h-6 bg-slate-200 mx-1"></div>
@@ -212,17 +258,6 @@ export const WalletApp: React.FC = () => {
       {/* Main Content Area */}
       <main className="flex-1 overflow-y-auto bg-slate-50 p-4 md:p-8">
          <div className="max-w-5xl mx-auto">
-            {/* Mobile Chain Selector */}
-            <div className="md:hidden mb-6">
-                <select 
-                  value={activeChainId} 
-                  onChange={(e) => setActiveChainId(Number(e.target.value))}
-                  className="w-full bg-white border border-slate-200 text-sm font-bold text-slate-900 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500"
-               >
-                  {chains.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-               </select>
-            </div>
-
             {localNotification && <NotificationToast message={localNotification} onClose={() => setLocalNotification(null)} />}
             {error && <TechAlert type="error" message={error} onClose={() => setError(null)} />}
 
@@ -232,6 +267,7 @@ export const WalletApp: React.FC = () => {
                   <WalletDashboard 
                     balance={balance} 
                     activeChain={activeChain} 
+                    chains={chains} // Pass full chain list for explorer lookups
                     address={activeAddress || ''} 
                     isLoading={isLoading} 
                     onRefresh={fetchData} 
@@ -257,6 +293,7 @@ export const WalletApp: React.FC = () => {
                     recommendedNonce={currentNonce}
                     onSend={handleSendSubmit}
                     onBack={() => setView('dashboard')}
+                    transactions={transactions} // Pass tx list to watch for updates
                   />
                )}
 
@@ -310,6 +347,8 @@ export const WalletApp: React.FC = () => {
         onClose={() => setIsChainModalOpen(false)}
         initialConfig={activeChain}
         onSave={handleSaveChain}
+        chains={chains}
+        onSwitchNetwork={setActiveChainId}
       />
 
       <AddTokenModal 

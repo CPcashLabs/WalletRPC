@@ -5,8 +5,18 @@ export const bttDonau: ChainData = {
   id: 1029,
   name: 'BTT Donau Testnet',
   defaultRpcUrl: 'https://pre-rpc.bt.io/',
+  publicRpcUrls: [
+    'https://pre-rpc.bt.io/',
+    'https://donau.bttc.network'
+  ],
   currencySymbol: 'BTT',
-  explorerUrl: 'https://testnet.bttcscan.com',
+  explorer: {
+    name: 'BTTCScan',
+    key: 'bttcscan',
+    url: 'https://testnet.bttcscan.com',
+    txPath: 'https://testnet.bttcscan.com/tx/{txid}',
+    addressPath: 'https://testnet.bttcscan.com/address/{address}'
+  },
   chainType: 'EVM',
   isTestnet: true,
   tokens: [

@@ -1,5 +1,6 @@
 
-import { useState, useRef } from 'react';
+
+import { useState, useRef, useEffect } from 'react';
 import { ethers } from 'ethers';
 import { TronService } from '../../../services/tronService';
 import { handleTxError, normalizeHex } from '../utils';
@@ -23,6 +24,13 @@ interface UseTransactionManagerProps {
   handleSafeProposal: (to: string, value: bigint, data: string, summary: string) => Promise<void>;
 }
 
+export type ProcessResult = {
+    success: boolean;
+    hash?: string;
+    isTimeout?: boolean;
+    error?: string;
+};
+
 /**
  * Hook: useTransactionManager
  * 
@@ -32,6 +40,7 @@ interface UseTransactionManagerProps {
  * 2. Nonce 管理 (乐观更新)
  * 3. 交易广播 (EVM/TRON)
  * 4. 发送表单提交逻辑 (路由到 EOA 直接发送或 Safe 提案)
+ * 5. 后台轮询交易状态
  */
 export const useTransactionManager = ({
   wallet,
@@ -59,6 +68,53 @@ export const useTransactionManager = ({
   const noncePromiseRef = useRef<Promise<number> | null>(null);
 
   /**
+   * 背景轮询：检查状态为 'submitted' 的 EVM 交易是否已确认
+   */
+  useEffect(() => {
+    if (!provider || transactions.length === 0) return;
+
+    const submittedTxs = transactions.filter(tx => tx.status === 'submitted' && tx.hash && tx.chainId === activeChain.id);
+    if (submittedTxs.length === 0) return;
+
+    const checkReceipts = async () => {
+        let needsUpdate = false;
+        const updatedList = [...transactions];
+
+        for (const tx of submittedTxs) {
+            try {
+                // EVM Logic
+                if (activeChain.chainType !== 'TRON' && tx.hash) {
+                    const receipt = await provider.getTransactionReceipt(tx.hash);
+                    if (receipt && receipt.status !== null) {
+                        const index = updatedList.findIndex(t => t.id === tx.id);
+                        if (index !== -1) {
+                            updatedList[index] = {
+                                ...updatedList[index],
+                                status: receipt.status === 1 ? 'confirmed' : 'failed',
+                                error: receipt.status === 0 ? 'Transaction Reverted' : undefined
+                            };
+                            needsUpdate = true;
+                        }
+                    }
+                }
+                // Tron Logic could be added here similar to EVM but usually requires specific API calls
+            } catch (e) {
+                console.warn(`Error checking receipt for ${tx.hash}`, e);
+            }
+        }
+
+        if (needsUpdate) {
+            setTransactions(updatedList);
+            fetchData(); // Update balances
+        }
+    };
+
+    const timer = setInterval(checkReceipts, 3000);
+    return () => clearInterval(timer);
+  }, [provider, transactions, activeChain]);
+
+
+  /**
    * 同步 Nonce
    * 从链上获取最新计数，仅在无本地乐观 Nonce 时更新。
    */
@@ -84,24 +140,24 @@ export const useTransactionManager = ({
      summary: string, 
      id: string,
      isTron: boolean = false
-  ) => {
+  ): Promise<ProcessResult> => {
      setTransactions(prev => [{ 
         id, 
+        chainId: activeChain.id,
         status: 'queued', 
         timestamp: Date.now(), 
-        summary, 
-        explorerUrl: activeChain.explorerUrl 
+        summary
      }, ...prev]);
 
      if (isTron) {
-        processTronTransaction(txRequest, id);
+        return processTronTransaction(txRequest, id);
      } else {
-        processTransaction(txRequest, id);
+        return processTransaction(txRequest, id);
      }
   };
 
   /** 处理 Tron 交易 */
-  const processTronTransaction = async (txRequest: any, id: string) => {
+  const processTronTransaction = async (txRequest: any, id: string): Promise<ProcessResult> => {
      try {
         if (!wallet) throw new Error("钱包未解锁");
         const host = activeChain.defaultRpcUrl;
@@ -111,6 +167,8 @@ export const useTransactionManager = ({
         let hash;
         const pk = wallet.privateKey.startsWith('0x') ? wallet.privateKey : '0x' + wallet.privateKey;
 
+        // Tron broadcast is usually fast, but confirmation takes time. 
+        // We consider broadcast success as 'timeout' (pending) for the UI if it's not instant.
         if (txRequest.type === 'NATIVE') {
             hash = await TronService.sendTrx(host, pk, txRequest.to, Number(txRequest.amount));
         } else if (txRequest.type === 'TOKEN') {
@@ -118,21 +176,23 @@ export const useTransactionManager = ({
         }
 
         if (hash) {
-            setTransactions(prev => prev.map(t => t.id === id ? { ...t, hash: hash, status: 'confirmed' } : t));
-            setNotification(`Tron 交易已发送: ${hash.slice(0,6)}...`);
-            fetchData();
+            // Tron usually returns hash immediately after broadcast, but it's not "Confirmed" in a block yet.
+            // We mark it as 'submitted' and return timeout=true so UI shows "Waiting for confirmation".
+            setTransactions(prev => prev.map(t => t.id === id ? { ...t, hash: hash, status: 'submitted' } : t));
+            return { success: true, hash, isTimeout: true }; 
         } else {
             throw new Error("Tron 交易失败或被拒绝");
         }
 
      } catch (e: any) {
         setTransactions(prev => prev.map(t => t.id === id ? { ...t, status: 'failed', error: e.message || "失败" } : t));
+        return { success: false, error: e.message };
      }
   };
 
-  /** 处理 EVM 交易 */
-  const processTransaction = async (txRequest: ethers.TransactionRequest, id: string) => {
-     if (!wallet || !provider) return;
+  /** 处理 EVM 交易 (带 5秒 Race Condition) */
+  const processTransaction = async (txRequest: ethers.TransactionRequest, id: string): Promise<ProcessResult> => {
+     if (!wallet || !provider) return { success: false, error: "Provider invalid" };
      try {
         const connectedWallet = wallet.connect(provider);
         let nonceToUse: number;
@@ -178,14 +238,28 @@ export const useTransactionManager = ({
         }
 
         setTransactions(prev => prev.map(t => t.id === id ? { ...t, status: 'submitted' } : t));
+        
+        // 1. 发送 (Broadcast)
         const txResponse = await connectedWallet.sendTransaction(txRequest);
         setTransactions(prev => prev.map(t => t.id === id ? { ...t, hash: txResponse.hash } : t));
         
-        await txResponse.wait();
-        
-        setTransactions(prev => prev.map(t => t.id === id ? { ...t, status: 'confirmed' } : t));
-        setNotification(`交易已确认: ${txResponse.hash.slice(0,6)}...`);
-        fetchData();
+        // 2. Race Condition: Wait for receipt OR 5s Timeout (Updated)
+        const waitPromise = txResponse.wait();
+        const timeoutPromise = new Promise<'TIMEOUT'>((resolve) => setTimeout(() => resolve('TIMEOUT'), 5000));
+
+        const result = await Promise.race([waitPromise, timeoutPromise]);
+
+        if (result === 'TIMEOUT') {
+             // 5秒内未入块，但在后台状态已经是 submitted
+             setNotification(`交易已广播，等待入块: ${txResponse.hash.slice(0,6)}...`);
+             return { success: true, hash: txResponse.hash, isTimeout: true };
+        } else {
+             // 5秒内入块成功
+             setTransactions(prev => prev.map(t => t.id === id ? { ...t, status: 'confirmed' } : t));
+             setNotification(`交易已确认: ${txResponse.hash.slice(0,6)}...`);
+             fetchData();
+             return { success: true, hash: txResponse.hash, isTimeout: false };
+        }
 
      } catch (e: any) {
         console.error(`Tx ${id} failed:`, e);
@@ -195,7 +269,7 @@ export const useTransactionManager = ({
            setTransactions(prev => prev.map(t => t.id === id ? { 
               ...t, status: 'submitted', error: '交易已在内存池中' 
            } : t));
-           return; 
+           return { success: true, isTimeout: true, error: 'Already known' }; // Treat as submitted/pending
         }
 
         if (errMsg.includes('nonce') || errMsg.includes('replacement')) {
@@ -203,6 +277,7 @@ export const useTransactionManager = ({
         }
         
         setTransactions(prev => prev.map(t => t.id === id ? { ...t, status: 'failed', error: errMsg } : t));
+        return { success: false, error: errMsg };
      }
   };
 
@@ -210,8 +285,8 @@ export const useTransactionManager = ({
    * 提交发送表单
    * 校验数据 -> 路由到直接发送或 Safe 提案
    */
-  const handleSendSubmit = async (formData: SendFormData) => {
-    if (!wallet || !activeAddress) return;
+  const handleSendSubmit = async (formData: SendFormData): Promise<ProcessResult> => {
+    if (!wallet || !activeAddress) return { success: false, error: "Wallet not ready" };
     setError(null);
 
     const { recipient, amount, asset, customData, gasPrice, gasLimit, nonce } = formData;
@@ -222,20 +297,17 @@ export const useTransactionManager = ({
            const hex = TronService.toHexAddress(recipient);
            if (!hex || hex.length !== 44) throw new Error("地址无效");
         } catch(e) {
-           setError("无效的 Tron 接收地址");
-           return;
+           return { success: false, error: "无效的 Tron 接收地址" };
         }
     } else {
         if (!ethers.isAddress(recipient)) {
-            setError("无效的接收地址");
-            return;
+            return { success: false, error: "无效的接收地址" };
         }
     }
 
     const safeAmount = amount || '0';
     if (isNaN(Number(safeAmount)) || Number(safeAmount) < 0) {
-        setError("金额无效");
-        return;
+        return { success: false, error: "金额无效" };
     }
 
     // 2. Tron 路径
@@ -248,8 +320,7 @@ export const useTransactionManager = ({
                 const amountSun = Math.floor(parseFloat(safeAmount) * 1_000_000);
                 const currentSunStr = await TronService.getBalance(activeChain.defaultRpcUrl, activeAddress);
                 if (Number(currentSunStr) < amountSun) {
-                    setError("TRX 余额不足");
-                    return;
+                    return { success: false, error: "TRX 余额不足" };
                 }
                 txPayload = { type: 'NATIVE', to: recipient, amount: amountSun };
             } else {
@@ -261,19 +332,16 @@ export const useTransactionManager = ({
                 const amountInt = ethers.parseUnits(safeAmount, decimals).toString();
                 
                 if (BigInt(currentBalStr) < BigInt(amountInt)) {
-                    setError(`${asset} 余额不足`);
-                    return;
+                    return { success: false, error: `${asset} 余额不足` };
                 }
                 txPayload = { type: 'TOKEN', to: recipient, amount: amountInt, contractAddress: token.address };
             }
 
             const txId = Date.now().toString();
-            queueTransaction(txPayload, summary, txId, true);
-            setNotification("Tron 交易已入队");
+            return await queueTransaction(txPayload, summary, txId, true);
         } catch (e: any) {
-            setError(handleTxError(e));
+            return { success: false, error: handleTxError(e) };
         }
-        return;
     }
 
     // 3. EVM 余额校验
@@ -281,8 +349,7 @@ export const useTransactionManager = ({
         const currentBal = ethers.parseEther(balance);
         const sendAmount = ethers.parseEther(safeAmount);
         if (currentBal < sendAmount) {
-            setError(`${activeChain.currencySymbol} 余额不足`);
-            return;
+            return { success: false, error: `${activeChain.currencySymbol} 余额不足` };
         }
     } else {
         const token = activeChainTokens.find(t => t.symbol === asset);
@@ -291,8 +358,7 @@ export const useTransactionManager = ({
             const currentBal = ethers.parseUnits(currentBalStr, token.decimals);
             const sendAmount = ethers.parseUnits(safeAmount, token.decimals);
             if (currentBal < sendAmount) {
-                setError(`${asset} 余额不足`);
-                return;
+                return { success: false, error: `${asset} 余额不足` };
             }
         }
     }
@@ -328,13 +394,13 @@ export const useTransactionManager = ({
             nonce: nonce 
         };
         const txId = Date.now().toString();
-        queueTransaction(txRequest, summary, txId, false);
-        setNotification("交易已入队!");
+        return await queueTransaction(txRequest, summary, txId, false);
       } else {
         await handleSafeProposal(toAddr, value, data, summary);
+        return { success: true, isTimeout: true, hash: "SAFE_PROPOSAL" }; // Mock result for Safe
       }
     } catch (e: any) {
-      setError(handleTxError(e));
+      return { success: false, error: handleTxError(e) };
     }
   };
 
