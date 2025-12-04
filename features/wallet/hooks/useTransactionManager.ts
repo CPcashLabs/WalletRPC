@@ -1,11 +1,11 @@
 
 import { useState, useRef } from 'react';
 import { ethers } from 'ethers';
-import { TronService } from '../TronService';
+import { TronService } from '../../../services/tronService';
 import { handleTxError, normalizeHex } from '../utils';
 import { TransactionRecord, ChainConfig, TokenConfig } from '../types';
 import { SendFormData } from '../components/SendForm';
-import { ERC20_ABI } from '../constants';
+import { ERC20_ABI } from '../config';
 
 interface UseTransactionManagerProps {
   wallet: ethers.Wallet | ethers.HDNodeWallet | null;

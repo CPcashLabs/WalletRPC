@@ -1,7 +1,7 @@
 
 import { useState } from 'react';
 import { ethers } from 'ethers';
-import { SAFE_ABI, PROXY_FACTORY_ABI, ZERO_ADDRESS, SENTINEL_OWNERS, getSafeConfig } from '../constants';
+import { SAFE_ABI, PROXY_FACTORY_ABI, ZERO_ADDRESS, SENTINEL_OWNERS, getSafeConfig } from '../config';
 import { ChainConfig, SafeDetails, SafePendingTx, TrackedSafe, TransactionRecord } from '../types';
 import { handleTxError } from '../utils';
 

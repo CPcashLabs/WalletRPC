@@ -1,8 +1,8 @@
 
 import { useState } from 'react';
 import { ethers } from 'ethers';
-import { TronService } from '../TronService';
-import { ERC20_ABI, SAFE_ABI } from '../constants';
+import { TronService } from '../../../services/tronService';
+import { ERC20_ABI, SAFE_ABI } from '../config';
 import { SafeDetails, ChainConfig, TokenConfig } from '../types';
 
 interface UseWalletDataProps {

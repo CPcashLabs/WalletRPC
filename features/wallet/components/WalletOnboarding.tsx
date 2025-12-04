@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { ShieldCheck, ArrowRight, Hexagon, Lock } from 'lucide-react';
-import { Button } from '../../../components/Button';
+import { Button } from '../../../components/ui/Button';
 import { useTranslation } from '../../../contexts/LanguageContext';
 
 interface WalletOnboardingProps {

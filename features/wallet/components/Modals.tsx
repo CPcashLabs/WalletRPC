@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect } from 'react';
 import { X, Trash2 } from 'lucide-react';
-import { Button } from '../../../components/Button';
+import { Button } from '../../../components/ui/Button';
 import { ChainConfig, TokenConfig } from '../types';
 
 // --- Chain Modal ---

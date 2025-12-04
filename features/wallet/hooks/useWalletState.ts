@@ -1,7 +1,7 @@
 
 import { useState } from 'react';
 import { ethers } from 'ethers';
-import { TronService } from '../TronService';
+import { TronService } from '../../../services/tronService';
 import { TokenConfig } from '../types';
 
 /**

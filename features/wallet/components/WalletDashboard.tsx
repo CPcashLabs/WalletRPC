@@ -1,8 +1,7 @@
 
-
 import React from 'react';
-import { RefreshCw, Copy, Send, List, Settings, Plus, ExternalLink, Clock, Wallet } from 'lucide-react';
-import { Button } from '../../../components/Button';
+import { RefreshCw, Copy, Send, List, Settings, Plus, ExternalLink, Clock } from 'lucide-react';
+import { Button } from '../../../components/ui/Button';
 import { ChainConfig, TokenConfig, TransactionRecord } from '../types';
 import { getExplorerLink } from '../utils';
 

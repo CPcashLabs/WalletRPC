@@ -1,6 +1,7 @@
+
 import React, { useState } from 'react';
-import { List, CheckCircle, Key, Zap, Trash2, ArrowLeft, Users, Shield, Plus, Clock } from 'lucide-react';
-import { Button } from '../../../components/Button';
+import { List, Key, Zap, Trash2, ArrowLeft, Users, Shield, Plus, Clock } from 'lucide-react';
+import { Button } from '../../../components/ui/Button';
 import { SafePendingTx, SafeDetails } from '../types';
 import { ethers } from 'ethers';
 

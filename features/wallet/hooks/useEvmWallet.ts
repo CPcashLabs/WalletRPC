@@ -1,8 +1,7 @@
 
-
 import { useEffect, useMemo, useRef } from 'react';
 import { ethers } from 'ethers';
-import { ERC20_ABI } from '../constants';
+import { ERC20_ABI } from '../config';
 import { TokenConfig, ChainConfig } from '../types';
 import { useWalletStorage } from './useWalletStorage';
 import { useWalletState } from './useWalletState';

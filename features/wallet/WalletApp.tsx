@@ -1,14 +1,14 @@
 
 import React from 'react';
 import { ChevronDown, LogOut, Settings, Wallet, Trash2, Bell, XCircle, CheckCircle, Shield } from 'lucide-react';
-import { useEvmWallet } from './wallet/hooks/useEvmWallet';
+import { useEvmWallet } from './hooks/useEvmWallet';
 
 // --- UI Components ---
-import { WalletOnboarding } from './wallet/components/WalletOnboarding';
-import { WalletDashboard } from './wallet/components/WalletDashboard';
-import { SendForm } from './wallet/components/SendForm';
-import { SafeQueue, SafeSettings, CreateSafe, TrackSafe } from './wallet/components/SafeViews';
-import { ChainModal, AddTokenModal, EditTokenModal } from './wallet/components/Modals';
+import { WalletOnboarding } from './components/WalletOnboarding';
+import { WalletDashboard } from './components/WalletDashboard';
+import { SendForm } from './components/SendForm';
+import { SafeQueue, SafeSettings, CreateSafe, TrackSafe } from './components/SafeViews';
+import { ChainModal, AddTokenModal, EditTokenModal } from './components/Modals';
 
 const TechAlert: React.FC<{ type: 'error' | 'success'; message: string; onClose?: () => void }> = ({ type, message, onClose }) => (
   <div className={`
@@ -40,7 +40,7 @@ const NotificationToast: React.FC<{ message: string; onClose: () => void }> = ({
   </div>
 );
 
-export const EvmWallet: React.FC = () => {
+export const WalletApp: React.FC = () => {
   const {
     wallet,
     setWallet,
@@ -328,5 +328,3 @@ export const EvmWallet: React.FC = () => {
     </div>
   );
 };
-
-export default EvmWallet;

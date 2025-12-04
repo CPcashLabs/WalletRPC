@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from 'react';
-import { DEFAULT_CHAINS } from '../constants';
+import { DEFAULT_CHAINS } from '../config';
 import { ChainConfig, TokenConfig, TrackedSafe, SafePendingTx } from '../types';
 
 /**
