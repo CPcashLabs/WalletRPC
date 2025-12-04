@@ -1,7 +1,6 @@
 
-
 import React from 'react';
-import { ShieldCheck, ChevronDown, LogOut, Settings, Wallet, Trash2, Bell, AlertTriangle, XCircle, CheckCircle } from 'lucide-react';
+import { ChevronDown, LogOut, Settings, Wallet, Trash2, Bell, XCircle, CheckCircle, Shield } from 'lucide-react';
 import { useEvmWallet } from './wallet/hooks/useEvmWallet';
 
 // --- UI Components ---
@@ -11,19 +10,18 @@ import { SendForm } from './wallet/components/SendForm';
 import { SafeQueue, SafeSettings, CreateSafe, TrackSafe } from './wallet/components/SafeViews';
 import { ChainModal, AddTokenModal, EditTokenModal } from './wallet/components/Modals';
 
-// --- Enhanced Tech UI Components ---
-
 const TechAlert: React.FC<{ type: 'error' | 'success'; message: string; onClose?: () => void }> = ({ type, message, onClose }) => (
   <div className={`
-    relative mb-4 p-4 rounded-lg border flex items-start shadow-md animate-tech-in
-    ${type === 'error' ? 'bg-red-50/80 border-red-200 text-red-800 animate-shake' : 'bg-green-50/80 border-green-200 text-green-800'}
+    fixed top-20 left-1/2 transform -translate-x-1/2 z-[100]
+    flex items-center px-4 py-3 rounded-xl shadow-2xl border backdrop-blur-md animate-tech-in min-w-[300px]
+    ${type === 'error' ? 'bg-red-900/90 border-red-700 text-white' : 'bg-emerald-900/90 border-emerald-700 text-white'}
   `}>
-    <div className="flex-shrink-0 mr-3 mt-0.5">
-      {type === 'error' ? <XCircle className="w-5 h-5 text-red-600" /> : <CheckCircle className="w-5 h-5 text-green-600" />}
+    <div className="flex-shrink-0 mr-3">
+      {type === 'error' ? <XCircle className="w-5 h-5" /> : <CheckCircle className="w-5 h-5" />}
     </div>
-    <div className="flex-1 text-sm font-medium break-words">{message}</div>
+    <div className="flex-1 text-sm font-medium">{message}</div>
     {onClose && (
-      <button onClick={onClose} className={`ml-3 p-1 rounded-md hover:bg-black/5 ${type === 'error' ? 'text-red-500' : 'text-green-500'}`}>
+      <button onClick={onClose} className="ml-3 p-1 rounded-md hover:bg-white/20">
         <XCircle className="w-4 h-4" />
       </button>
     )}
@@ -32,7 +30,7 @@ const TechAlert: React.FC<{ type: 'error' | 'success'; message: string; onClose?
 
 const NotificationToast: React.FC<{ message: string; onClose: () => void }> = ({ message, onClose }) => (
   <div className="fixed top-6 right-6 z-[100] animate-tech-in max-w-[90vw]">
-    <div className="bg-slate-800 text-white px-5 py-4 rounded-xl shadow-2xl flex items-center border border-slate-700 tech-border-glow">
+    <div className="bg-slate-900/90 text-white px-5 py-4 rounded-xl shadow-2xl flex items-center border border-slate-700 backdrop-blur-md">
       <Bell className="w-5 h-5 text-indigo-400 mr-3 flex-shrink-0" />
       <span className="text-sm font-medium mr-6 truncate">{message}</span>
       <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
@@ -42,7 +40,7 @@ const NotificationToast: React.FC<{ message: string; onClose: () => void }> = ({
   </div>
 );
 
-const EvmWallet: React.FC = () => {
+export const EvmWallet: React.FC = () => {
   const {
     wallet,
     setWallet,
@@ -94,15 +92,13 @@ const EvmWallet: React.FC = () => {
     addOwnerTx,
     removeOwnerTx,
     changeThresholdTx,
-    setError // Assuming hook exposes setter to clear error
+    setError
   } = useEvmWallet();
 
-  // Temporary function to clear notifications since it's not exposed by hook directly in previous turn
-  // In a real refactor we would expose setNotification from hook, but here we can simulate "onClose"
   const [localNotification, setLocalNotification] = React.useState<string | null>(null);
   React.useEffect(() => { if (notification) { setLocalNotification(notification); const t = setTimeout(() => setLocalNotification(null), 5000); return () => clearTimeout(t); } }, [notification]);
 
-  if (view === 'onboarding') {
+  if (view === 'onboarding' || !wallet) {
     return (
       <WalletOnboarding 
         input={privateKeyOrPhrase} 
@@ -114,58 +110,64 @@ const EvmWallet: React.FC = () => {
   }
 
   return (
-    <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-200 min-h-[500px] flex flex-col relative animate-tech-in transition-all duration-300">
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col">
       
-      {/* Tech-Style Header - Responsive */}
-      <div className="bg-slate-900 text-white p-3 md:p-4 flex flex-col md:flex-row gap-3 md:items-center justify-between z-20 shadow-md">
+      {/* App Header */}
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-40 px-4 md:px-8 h-16 flex items-center justify-between shadow-sm">
          
-         {/* Left: Account Selector */}
-         <div className="flex items-center justify-between md:justify-start w-full md:w-auto relative z-30">
-             <div className="relative w-full md:w-auto">
+         {/* Left: Account Context */}
+         <div className="flex items-center">
+             <div className="relative">
                 <button 
                   onClick={() => activeChain.chainType !== 'TRON' && setIsMenuOpen(!isMenuOpen)}
                   className={`
-                    w-full md:w-auto flex items-center justify-between md:justify-start space-x-2 bg-slate-800 px-3 py-2 rounded-lg border border-slate-700 transition-all duration-200
-                    ${activeChain.chainType === 'TRON' ? 'cursor-default opacity-90' : 'hover:bg-slate-700 hover:border-slate-600 btn-tech-press'}
+                    flex items-center space-x-3 px-3 py-2 rounded-xl transition-all duration-200
+                    ${activeChain.chainType === 'TRON' ? 'cursor-default' : 'hover:bg-slate-100 cursor-pointer'}
                   `}
                 >
-                  <div className="flex items-center space-x-2 overflow-hidden">
-                    <div className={`w-2 h-2 rounded-full shadow-[0_0_8px_rgba(255,255,255,0.5)] flex-shrink-0 ${activeAccountType === 'EOA' ? 'bg-indigo-500 shadow-indigo-500/50' : 'bg-green-500 shadow-green-500/50'}`} />
-                    <span className="font-mono text-sm truncate">
-                       {activeAccountType === 'EOA' ? (activeChain.chainType === 'TRON' ? 'Tron Wallet' : 'Personal Account') : `Safe: ${activeSafeAddress?.slice(0,6)}...`}
-                    </span>
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shadow-sm ${activeAccountType === 'EOA' ? 'bg-indigo-600 text-white' : 'bg-emerald-600 text-white'}`}>
+                    {activeAccountType === 'EOA' ? <Wallet className="w-4 h-4" /> : <Shield className="w-4 h-4" />}
                   </div>
-                  {activeChain.chainType !== 'TRON' && <ChevronDown className={`w-4 h-4 transition-transform duration-200 flex-shrink-0 ${isMenuOpen ? 'rotate-180' : ''}`} />}
+                  <div className="text-left hidden md:block">
+                     <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">{activeAccountType === 'EOA' ? 'Personal' : 'Safe Multisig'}</div>
+                     <div className="text-sm font-bold text-slate-900 truncate max-w-[150px]">
+                        {activeAccountType === 'EOA' ? (activeChain.chainType === 'TRON' ? 'Tron Wallet' : 'My Wallet') : `Safe ${activeSafeAddress?.slice(0,4)}`}
+                     </div>
+                  </div>
+                  {activeChain.chainType !== 'TRON' && <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isMenuOpen ? 'rotate-180' : ''}`} />}
                 </button>
 
                 {isMenuOpen && activeChain.chainType !== 'TRON' && (
-                   <div className="absolute top-full left-0 mt-2 w-full md:w-72 bg-white text-slate-900 rounded-xl shadow-2xl border border-slate-200 overflow-hidden z-50 animate-tech-in">
-                      <div className="p-2 border-b border-slate-100">
-                         <button onClick={() => { setActiveAccountType('EOA'); setIsMenuOpen(false); setView('dashboard'); }} className="w-full text-left p-2 hover:bg-slate-50 rounded-lg flex items-center transition-colors">
-                            <div className="p-1.5 bg-indigo-100 rounded-md mr-3 text-indigo-600"><Wallet className="w-4 h-4" /></div>
-                            <span className="text-sm font-medium">Personal Wallet</span>
+                   <div className="absolute top-full left-0 mt-3 w-72 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-tech-in z-50">
+                      <div className="p-2 border-b border-slate-50">
+                         <button onClick={() => { setActiveAccountType('EOA'); setIsMenuOpen(false); setView('dashboard'); }} className="w-full text-left p-3 hover:bg-slate-50 rounded-xl flex items-center transition-colors group">
+                            <div className="p-2 bg-indigo-50 rounded-lg mr-3 text-indigo-600 group-hover:bg-indigo-100"><Wallet className="w-4 h-4" /></div>
+                            <div>
+                               <div className="text-sm font-bold text-slate-900">Personal Wallet</div>
+                               <div className="text-xs text-slate-500">EOA • Private Key</div>
+                            </div>
                          </button>
                       </div>
-                      <div className="p-2 max-h-64 overflow-y-auto">
-                         <p className="text-[10px] font-bold text-slate-400 px-2 mb-2 uppercase tracking-wider">Tracked Safes</p>
+                      <div className="p-2 max-h-[300px] overflow-y-auto">
+                         <p className="text-[10px] font-bold text-slate-400 px-3 py-2 uppercase tracking-wider">Your Safes</p>
                          {trackedSafes.filter(s => s.chainId === activeChainId).map(s => (
                             <div key={s.address} className="flex justify-between items-center group mb-1">
                                <button 
                                   onClick={() => { setActiveAccountType('SAFE'); setActiveSafeAddress(s.address); setIsMenuOpen(false); setView('dashboard'); }}
-                                  className="flex-1 text-left p-2 text-sm flex items-center rounded-lg hover:bg-slate-50 transition-colors"
+                                  className="flex-1 text-left p-2.5 text-sm flex items-center rounded-xl hover:bg-emerald-50 hover:text-emerald-900 transition-colors"
                                >
-                                  <div className="w-1.5 h-1.5 bg-green-500 rounded-full mr-3"></div>
-                                  <span className="font-mono text-slate-700 truncate">{s.name}</span>
+                                  <div className="w-2 h-2 bg-emerald-500 rounded-full mr-3"></div>
+                                  <span className="font-mono font-medium truncate">{s.name}</span>
                                </button>
-                               <button onClick={() => setTrackedSafes(prev => prev.filter(x => x.address !== s.address))} className="p-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 className="w-3.5 h-3.5"/></button>
+                               <button onClick={(e) => { e.stopPropagation(); setTrackedSafes(prev => prev.filter(x => x.address !== s.address)); }} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5"/></button>
                             </div>
                          ))}
                          {trackedSafes.filter(s => s.chainId === activeChainId).length === 0 && (
-                           <div className="px-2 py-3 text-xs text-slate-400 text-center italic">No safes tracked on this network</div>
+                           <div className="px-3 py-4 text-xs text-slate-400 text-center italic border border-dashed border-slate-100 rounded-xl mb-2">No safes tracked on this chain</div>
                          )}
-                         <div className="grid grid-cols-2 gap-2 mt-3 pt-2 border-t border-slate-100">
-                            <button onClick={() => { setView('create_safe'); setIsMenuOpen(false); }} className="py-1.5 text-xs bg-indigo-50 text-indigo-700 rounded-md font-medium hover:bg-indigo-100 transition-colors">+ Create New</button>
-                            <button onClick={() => { setView('add_safe'); setIsMenuOpen(false); }} className="py-1.5 text-xs bg-slate-100 text-slate-700 rounded-md font-medium hover:bg-slate-200 transition-colors">Track Existing</button>
+                         <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-50">
+                            <button onClick={() => { setView('create_safe'); setIsMenuOpen(false); }} className="py-2 text-xs bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 transition-colors">New Safe</button>
+                            <button onClick={() => { setView('add_safe'); setIsMenuOpen(false); }} className="py-2 text-xs bg-white border border-slate-200 text-slate-700 rounded-lg font-bold hover:bg-slate-50 transition-colors">Import</button>
                          </div>
                       </div>
                    </div>
@@ -173,144 +175,156 @@ const EvmWallet: React.FC = () => {
              </div>
          </div>
 
-         {/* Right: Chain, Settings, Logout */}
-         <div className="flex items-center gap-2 w-full md:w-auto">
-            <div className="bg-slate-800 rounded-lg p-0.5 flex items-center border border-slate-700 flex-grow md:flex-grow-0 min-w-0">
+         {/* Center (Desktop): Chain Selector */}
+         <div className="hidden md:flex items-center justify-center">
+            <div className="bg-slate-100 rounded-full p-1 flex items-center">
                <select 
                   value={activeChainId} 
                   onChange={(e) => setActiveChainId(Number(e.target.value))}
-                  className="bg-transparent border-none text-xs text-slate-200 rounded px-2 py-1.5 focus:ring-0 cursor-pointer hover:text-white transition-colors w-full"
+                  className="bg-transparent border-none text-sm font-bold text-slate-700 rounded-full px-4 py-1.5 focus:ring-0 cursor-pointer hover:text-indigo-600 transition-colors"
                >
-                  {chains.map(c => <option key={c.id} value={c.id} className="bg-slate-800 text-white">{c.name}</option>)}
+                  {chains.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                </select>
             </div>
-            
-            <button onClick={() => setIsChainModalOpen(true)} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors flex-shrink-0"><Settings className="w-4 h-4"/></button>
-            <div className="w-px h-4 bg-slate-700 mx-1 flex-shrink-0"></div>
+         </div>
+
+         {/* Right: Actions */}
+         <div className="flex items-center gap-2">
+            <button onClick={() => setIsChainModalOpen(true)} className="p-2.5 hover:bg-slate-100 rounded-full text-slate-500 hover:text-slate-900 transition-colors" title="Network Settings">
+               <Settings className="w-5 h-5"/>
+            </button>
+            <div className="w-px h-6 bg-slate-200 mx-1"></div>
             <button 
                onClick={() => { 
                   setWallet(null); 
                   setPrivateKeyOrPhrase('');
                   setView('onboarding'); 
                }} 
-               className="p-2 hover:bg-red-500/20 rounded-lg text-red-400 hover:text-red-300 transition-colors flex-shrink-0"
-               title="Log Out"
+               className="flex items-center space-x-2 px-3 py-2 hover:bg-red-50 rounded-xl text-slate-500 hover:text-red-600 transition-colors"
+               title="Lock Wallet"
             >
                <LogOut className="w-4 h-4"/>
+               <span className="text-xs font-bold hidden md:inline">Lock</span>
             </button>
          </div>
-      </div>
+      </header>
 
-      <div className="flex-1 bg-slate-50/50 p-4 md:p-6 overflow-y-auto relative">
-         
-         {/* Notifications */}
-         {localNotification && (
-            <NotificationToast message={localNotification} onClose={() => setLocalNotification(null)} />
-         )}
+      {/* Main Content Area */}
+      <main className="flex-1 overflow-y-auto bg-slate-50 p-4 md:p-8">
+         <div className="max-w-5xl mx-auto">
+            {/* Mobile Chain Selector */}
+            <div className="md:hidden mb-6">
+                <select 
+                  value={activeChainId} 
+                  onChange={(e) => setActiveChainId(Number(e.target.value))}
+                  className="w-full bg-white border border-slate-200 text-sm font-bold text-slate-900 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500"
+               >
+                  {chains.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+               </select>
+            </div>
 
-         {/* Contextual Error Display */}
-         {error && (
-           <TechAlert type="error" message={error} onClose={() => setError(null)} />
-         )}
+            {localNotification && <NotificationToast message={localNotification} onClose={() => setLocalNotification(null)} />}
+            {error && <TechAlert type="error" message={error} onClose={() => setError(null)} />}
 
-         {/* Animated View Container */}
-         <div key={view} className="animate-tech-in">
-             {view === 'dashboard' && (
-                <WalletDashboard 
-                  balance={balance} 
-                  activeChain={activeChain} 
-                  address={activeAddress || ''} 
-                  isLoading={isLoading} 
-                  onRefresh={fetchData} 
-                  onSend={() => setView('send')} 
-                  activeAccountType={activeAccountType} 
-                  pendingTxCount={pendingSafeTxs.filter(t => t.nonce === safeDetails?.nonce).length}
-                  onViewQueue={() => setView('safe_queue')} 
-                  onViewSettings={() => setView('settings')} 
-                  tokens={activeChainTokens} 
-                  tokenBalances={tokenBalances} 
-                  onAddToken={() => setIsAddTokenModalOpen(true)} 
-                  onEditToken={setTokenToEdit}
-                  transactions={transactions}
-                />
-             )}
+            {/* View Switcher */}
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+               {view === 'dashboard' && (
+                  <WalletDashboard 
+                    balance={balance} 
+                    activeChain={activeChain} 
+                    address={activeAddress || ''} 
+                    isLoading={isLoading} 
+                    onRefresh={fetchData} 
+                    onSend={() => setView('send')} 
+                    activeAccountType={activeAccountType} 
+                    pendingTxCount={pendingSafeTxs.filter(t => t.nonce === safeDetails?.nonce).length}
+                    onViewQueue={() => setView('safe_queue')} 
+                    onViewSettings={() => setView('settings')} 
+                    tokens={activeChainTokens} 
+                    tokenBalances={tokenBalances} 
+                    onAddToken={() => setIsAddTokenModalOpen(true)} 
+                    onEditToken={setTokenToEdit}
+                    transactions={transactions}
+                  />
+               )}
 
-             {view === 'send' && (
-                <SendForm 
-                  activeChain={activeChain}
-                  tokens={activeChainTokens}
-                  balances={tokenBalances}
-                  activeAccountType={activeAccountType}
-                  recommendedNonce={currentNonce}
-                  onSend={handleSendSubmit}
-                  onBack={() => setView('dashboard')}
-                />
-             )}
+               {view === 'send' && (
+                  <SendForm 
+                    activeChain={activeChain}
+                    tokens={activeChainTokens}
+                    balances={tokenBalances}
+                    activeAccountType={activeAccountType}
+                    recommendedNonce={currentNonce}
+                    onSend={handleSendSubmit}
+                    onBack={() => setView('dashboard')}
+                  />
+               )}
 
-             {view === 'safe_queue' && (
-                <SafeQueue 
-                  pendingTxs={pendingSafeTxs}
-                  safeDetails={safeDetails}
-                  walletAddress={wallet?.address}
-                  onSign={handleAddSignature}
-                  onExecute={handleExecutePending}
-                  onBack={() => setView('dashboard')}
-                />
-             )}
+               {view === 'safe_queue' && (
+                  <SafeQueue 
+                    pendingTxs={pendingSafeTxs}
+                    safeDetails={safeDetails}
+                    walletAddress={wallet?.address}
+                    onSign={handleAddSignature}
+                    onExecute={handleExecutePending}
+                    onBack={() => setView('dashboard')}
+                  />
+               )}
 
-             {view === 'settings' && safeDetails && (
-                <SafeSettings 
-                  safeDetails={safeDetails}
-                  onRemoveOwner={removeOwnerTx}
-                  onAddOwner={addOwnerTx}
-                  onChangeThreshold={changeThresholdTx}
-                  onBack={() => setView('dashboard')}
-                />
-             )}
+               {view === 'settings' && safeDetails && (
+                  <SafeSettings 
+                    safeDetails={safeDetails}
+                    onRemoveOwner={removeOwnerTx}
+                    onAddOwner={addOwnerTx}
+                    onChangeThreshold={changeThresholdTx}
+                    onBack={() => setView('dashboard')}
+                  />
+               )}
 
-             {view === 'create_safe' && (
-               <CreateSafe 
-                 onDeploy={deploySafe}
-                 onCancel={() => setView('dashboard')}
-                 isDeploying={isDeployingSafe}
-               />
-             )}
+               {view === 'create_safe' && (
+                 <CreateSafe 
+                   onDeploy={deploySafe}
+                   onCancel={() => setView('dashboard')}
+                   isDeploying={isDeployingSafe}
+                 />
+               )}
 
-             {view === 'add_safe' && (
-               <TrackSafe 
-                 onTrack={(addr) => {
-                   setTrackedSafes(prev => [...prev, { address: addr, name: `Safe ${addr.slice(0,4)}`, chainId: activeChainId }]);
-                   setActiveAccountType('SAFE');
-                   setActiveSafeAddress(addr);
-                   setView('dashboard');
-                 }}
-                 onCancel={() => setView('dashboard')}
-               />
-             )}
+               {view === 'add_safe' && (
+                 <TrackSafe 
+                   onTrack={(addr) => {
+                     setTrackedSafes(prev => [...prev, { address: addr, name: `Safe ${addr.slice(0,4)}`, chainId: activeChainId }]);
+                     setActiveAccountType('SAFE');
+                     setActiveSafeAddress(addr);
+                     setView('dashboard');
+                   }}
+                   onCancel={() => setView('dashboard')}
+                 />
+               )}
+            </div>
          </div>
+      </main>
 
-         {/* Modals */}
-         <ChainModal 
-           isOpen={isChainModalOpen}
-           onClose={() => setIsChainModalOpen(false)}
-           initialConfig={activeChain}
-           onSave={handleSaveChain}
-         />
+      {/* Modals */}
+      <ChainModal 
+        isOpen={isChainModalOpen}
+        onClose={() => setIsChainModalOpen(false)}
+        initialConfig={activeChain}
+        onSave={handleSaveChain}
+      />
 
-         <AddTokenModal 
-           isOpen={isAddTokenModalOpen}
-           onClose={() => setIsAddTokenModalOpen(false)}
-           onImport={confirmAddToken}
-           isImporting={isAddingToken}
-         />
+      <AddTokenModal 
+        isOpen={isAddTokenModalOpen}
+        onClose={() => setIsAddTokenModalOpen(false)}
+        onImport={confirmAddToken}
+        isImporting={isAddingToken}
+      />
 
-         <EditTokenModal 
-           token={tokenToEdit}
-           onClose={() => setTokenToEdit(null)}
-           onSave={handleUpdateToken}
-           onDelete={handleRemoveToken}
-         />
-      </div>
+      <EditTokenModal 
+        token={tokenToEdit}
+        onClose={() => setTokenToEdit(null)}
+        onSave={handleUpdateToken}
+        onDelete={handleRemoveToken}
+      />
     </div>
   );
 };

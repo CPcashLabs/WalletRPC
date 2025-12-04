@@ -1,5 +1,5 @@
 {
-  "name": "walletrpc",
+  "name": "nexus-vault",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -9,11 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@google/genai": "0.1.1",
     "lucide-react": "0.263.1",
     "react-dom": "^19.2.0",
     "react": "^19.2.0",
-    "react-markdown": "9.0.0",
     "ethers": "6.13.4",
     "bs58": "5.0.0",
     "tweetnacl": "1.0.3",
