@@ -4,6 +4,11 @@ import { ethers } from 'ethers';
 import { TronService } from '../../../services/tronService';
 import { TokenConfig } from '../types';
 
+export interface ErrorState {
+  message: string;
+  timestamp: number;
+}
+
 /**
  * Hook: useWalletState
  * 
@@ -48,8 +53,8 @@ export const useWalletState = (initialChainId: number) => {
   /** 全局加载指示器 */
   const [isLoading, setIsLoading] = useState(false);
   
-  /** 全局错误信息 */
-  const [error, setError] = useState<string | null>(null);
+  /** 全局错误信息对象 (支持重复触发) */
+  const [errorObject, setErrorObject] = useState<ErrorState | null>(null);
   
   /** 全局通知信息 */
   const [notification, setNotification] = useState<string | null>(null);
@@ -60,6 +65,16 @@ export const useWalletState = (initialChainId: number) => {
   const [isChainModalOpen, setIsChainModalOpen] = useState(false);
   const [isAddTokenModalOpen, setIsAddTokenModalOpen] = useState(false);
   const [isAddingToken, setIsAddingToken] = useState(false);
+
+  // Helper to set error
+  const setError = (msg: string | null) => {
+    if (!msg) {
+      setErrorObject(null);
+    } else {
+      // Always update timestamp to reset timer even if message is same
+      setErrorObject({ message: msg, timestamp: Date.now() });
+    }
+  };
 
   /**
    * 处理钱包导入
@@ -123,7 +138,9 @@ export const useWalletState = (initialChainId: number) => {
     privateKeyOrPhrase, setPrivateKeyOrPhrase,
     isMenuOpen, setIsMenuOpen,
     isLoading, setIsLoading,
-    error, setError,
+    error: errorObject?.message || null, 
+    errorObject, // Export object for dependency checking
+    setError,
     notification, setNotification,
     tokenToEdit, setTokenToEdit,
     isChainModalOpen, setIsChainModalOpen,

@@ -316,9 +316,10 @@ export const CreateSafe: React.FC<CreateSafeProps> = ({ onDeploy, onCancel, isDe
 interface TrackSafeProps {
   onTrack: (address: string) => void;
   onCancel: () => void;
+  isLoading?: boolean;
 }
 
-export const TrackSafe: React.FC<TrackSafeProps> = ({ onTrack, onCancel }) => {
+export const TrackSafe: React.FC<TrackSafeProps> = ({ onTrack, onCancel, isLoading }) => {
   const [address, setAddress] = useState('');
 
   return (
@@ -345,6 +346,7 @@ export const TrackSafe: React.FC<TrackSafeProps> = ({ onTrack, onCancel }) => {
            onClick={() => { if(ethers.isAddress(address)) onTrack(address); }} 
            className="w-full py-3 shadow-lg shadow-indigo-100 btn-tech-press"
            disabled={!address}
+           isLoading={isLoading}
         >
           Add to Watchlist
         </Button>

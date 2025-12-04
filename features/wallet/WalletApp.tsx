@@ -62,6 +62,7 @@ export const WalletApp: React.FC = () => {
     isLoading,
     isInitialFetchDone, // From hook
     error,
+    errorObject, // For dependency tracking
     notification,
     isChainModalOpen,
     setIsChainModalOpen,
@@ -90,6 +91,7 @@ export const WalletApp: React.FC = () => {
     handleUpdateToken,
     handleRemoveToken,
     handleSaveChain,
+    handleTrackSafe,
     deploySafe,
     addOwnerTx,
     removeOwnerTx,
@@ -99,6 +101,14 @@ export const WalletApp: React.FC = () => {
 
   const [localNotification, setLocalNotification] = React.useState<string | null>(null);
   React.useEffect(() => { if (notification) { setLocalNotification(notification); const t = setTimeout(() => setLocalNotification(null), 5000); return () => clearTimeout(t); } }, [notification]);
+
+  // Error auto-dismiss logic
+  React.useEffect(() => {
+    if (errorObject) {
+       const t = setTimeout(() => setError(null), 5000);
+       return () => clearTimeout(t);
+    }
+  }, [errorObject, setError]);
 
   // --- Animation States ---
   const [isOnboardingExiting, setIsOnboardingExiting] = React.useState(false);
@@ -130,7 +140,8 @@ export const WalletApp: React.FC = () => {
   // 3. Start minimum timer when entering animation
   React.useEffect(() => {
     if (view === 'intro_animation') {
-      const t = setTimeout(() => setMinTimePassed(true), 2500); // Minimum 2.5s duration
+      // Set to 5000ms as requested (Minimum 5 seconds)
+      const t = setTimeout(() => setMinTimePassed(true), 5000); 
       return () => clearTimeout(t);
     }
   }, [view]);
@@ -328,13 +339,9 @@ export const WalletApp: React.FC = () => {
 
                {view === 'add_safe' && (
                  <TrackSafe 
-                   onTrack={(addr) => {
-                     setTrackedSafes(prev => [...prev, { address: addr, name: `Safe ${addr.slice(0,4)}`, chainId: activeChainId }]);
-                     setActiveAccountType('SAFE');
-                     setActiveSafeAddress(addr);
-                     setView('dashboard');
-                   }}
+                   onTrack={handleTrackSafe}
                    onCancel={() => setView('dashboard')}
+                   isLoading={isLoading}
                  />
                )}
             </div>

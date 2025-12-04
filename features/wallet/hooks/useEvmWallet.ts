@@ -113,13 +113,28 @@ export const useEvmWallet = () => {
     safeHandlerRef.current = safeMgr.handleSafeProposal;
   }, [safeMgr.handleSafeProposal]);
 
-  // 副作用处理
+  // 副作用处理: 网络切换时，如果 Safe 不在当前网络，则切回 EOA
   useEffect(() => {
-    if (activeChain.chainType === 'TRON' && activeAccountType === 'SAFE') {
-      state.setActiveAccountType('EOA');
-      setView('dashboard');
+    if (activeAccountType === 'SAFE') {
+       // 检查当前选中的 Safe 是否属于新切换的 Chain
+       const isSafeValidOnChain = trackedSafes.some(
+          s => s.address === activeSafeAddress && s.chainId === activeChainId
+       );
+
+       // 额外检查: TRON 不支持 Safe
+       const isTron = activeChain.chainType === 'TRON';
+
+       if (!isSafeValidOnChain || isTron) {
+          state.setActiveAccountType('EOA');
+          state.setActiveSafeAddress(null);
+          // 如果不在 dashboard 也不用强制切，但如果是 safe_queue 或 settings 这种专属页面，最好切回 dashboard
+          if (view === 'safe_queue' || view === 'settings') {
+             setView('dashboard');
+          }
+          setNotification("已切换回个人钱包 (该 Safe 不在当前网络)");
+       }
     }
-  }, [activeChain, activeAccountType, state.setActiveAccountType, setView]);
+  }, [activeChainId, activeChain, activeAccountType, activeSafeAddress, trackedSafes, state.setActiveAccountType, setView]);
 
   useEffect(() => {
     txMgr.localNonceRef.current = null;
@@ -182,6 +197,47 @@ export const useEvmWallet = () => {
      state.setIsChainModalOpen(false); state.setActiveChainId(newConfig.id);
   };
 
+  /**
+   * 验证并追踪 Safe
+   * 在导入前检查合约是否存在于当前链
+   */
+  const handleTrackSafe = async (address: string) => {
+      if (!ethers.isAddress(address)) {
+          setError("无效的地址格式");
+          return;
+      }
+      if (!provider) {
+          setError("无法连接网络进行验证");
+          return;
+      }
+
+      setIsLoading(true); // Start loading animation
+      try {
+          // 验证是否为合约
+          const code = await provider.getCode(address);
+          if (code === '0x') {
+              throw new Error("Target address is not a contract");
+          }
+
+          // 添加到列表
+          setTrackedSafes(prev => [...prev, { 
+              address: address, 
+              name: `Safe ${address.slice(0,4)}`, 
+              chainId: activeChainId 
+          }]);
+          
+          state.setActiveAccountType('SAFE');
+          state.setActiveSafeAddress(address);
+          setView('dashboard');
+          setNotification("Safe 导入成功");
+      } catch (e) {
+          console.error(e);
+          setError("导入失败: 该地址在当前网络不是有效的合约。请检查网络设置或地址。");
+      } finally {
+          setIsLoading(false); // Stop loading animation
+      }
+  };
+
   return {
     ...state,
     ...dataLayer,
@@ -197,6 +253,7 @@ export const useEvmWallet = () => {
     handleUpdateToken,
     handleRemoveToken,
     handleSaveChain,
+    handleTrackSafe, // Export new handler
     pendingSafeTxs
   };
 };
