@@ -10,22 +10,29 @@ import { ChainConfig, TokenConfig } from '../types';
 import { ERC20_ABI } from '../config';
 
 /**
- * 【核心黑科技：请求塌陷控制器 (Request Collapsing Provider)】
+ * 【核心技术：带缓存的智能 RPC 提供者 (Memoized RPC Provider)】
  * 
- * 解决痛点：React 多个 Hook 并行初始化时，会产生完全相同的 RPC 调用（如 eth_gasPrice）。
- * 实现：在底层拦截所有 send 指令。如果同一个 method+params 的请求正在执行，则后续调用直接挂载到该 Promise 上。
+ * 解决痛点：Ethers 在内部处理 "latest" 块或 Gas 估算时，即使我们手动合并了 Promise，
+ * 它也可能因为第一个请求刚结束，第二个请求又发起的微小时间差导致冗余网络开销。
  */
 class DeduplicatingJsonRpcProvider extends ethers.JsonRpcProvider {
+  // 正在进行的请求（并发去重）
   private _inflight = new Map<string, Promise<any>>();
+  // 已完成请求的短期缓存（时间片去重）
+  private _resCache = new Map<string, { result: any, expiry: number }>();
+  
+  private readonly CACHE_TTL = 2000; // 2秒缓存生命周期
 
   async send(method: string, params: Array<any>): Promise<any> {
-    // 只有特定的查询方法需要去重，避免拦截执行类方法
+    // 只有查询类方法值得缓存
     const cacheableMethods = [
       'eth_chainId', 
       'eth_gasPrice', 
       'eth_maxPriorityFeePerGas', 
       'eth_getBlockByNumber', 
-      'eth_feeHistory'
+      'eth_feeHistory',
+      'eth_getBalance',
+      'eth_getTransactionCount'
     ];
 
     if (!cacheableMethods.includes(method)) {
@@ -33,14 +40,30 @@ class DeduplicatingJsonRpcProvider extends ethers.JsonRpcProvider {
     }
 
     const key = `${method}:${JSON.stringify(params)}`;
-    const existing = this._inflight.get(key);
-    
-    if (existing) {
-      // console.debug(`[RPC] Collapsed redundant request: ${method}`);
-      return existing;
+    const now = Date.now();
+
+    // 1. 检查结果缓存 (解决 ID 不同但内容相同的重复请求)
+    const cached = this._resCache.get(key);
+    if (cached && cached.expiry > now) {
+      return cached.result;
     }
 
-    const promise = super.send(method, params).finally(() => {
+    // 2. 检查并发锁定 (解决同一瞬间的请求)
+    const existingPromise = this._inflight.get(key);
+    if (existingPromise) {
+      return existingPromise;
+    }
+
+    // 3. 执行真正的网络请求
+    const promise = super.send(method, params).then(result => {
+      // 存入短期结果缓存
+      this._resCache.set(key, { 
+        result, 
+        expiry: Date.now() + this.CACHE_TTL 
+      });
+      return result;
+    }).finally(() => {
+      // 释放并发锁定
       this._inflight.delete(key);
     });
 
@@ -75,14 +98,10 @@ export const useEvmWallet = () => {
     return activeChain.chainType === 'TRON' ? state.tronWalletAddress : wallet.address;
   }, [wallet, activeAccountType, activeSafeAddress, activeChain, state.tronWalletAddress]);
 
-  /**
-   * 【性能优化：注入去重 Provider】
-   */
   const provider = useMemo(() => {
     if (activeChain.chainType === 'TRON' || !activeChain.defaultRpcUrl) return null;
     
     const network = ethers.Network.from(activeChain.id);
-    // 使用我们自定义的去重类，而不是原生的 JsonRpcProvider
     return new DeduplicatingJsonRpcProvider(activeChain.defaultRpcUrl, network, {
       staticNetwork: network
     });
@@ -128,7 +147,6 @@ export const useEvmWallet = () => {
   useEffect(() => {
     const isCoreView = view === 'intro_animation' || view === 'dashboard';
     if (wallet && isCoreView) {
-      // 这里的并发调用现在会被 DeduplicatingJsonRpcProvider 完美合并
       fetchData();
       if (activeChain.chainType !== 'TRON') txMgr.syncNonce();
     }

@@ -23,7 +23,7 @@ export const useTransactionManager = ({
   provider,
   activeChain,
   activeChainId,
-  activeAccountType, // 新增：从配置获取当前账户类型
+  activeAccountType,
   fetchData,
   setError,
   handleSafeProposal
@@ -31,14 +31,22 @@ export const useTransactionManager = ({
 
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const localNonceRef = useRef<number | null>(null);
+  const isSyncingRef = useRef<boolean>(false);
 
+  /**
+   * 【优化点：带锁的 Nonce 同步】
+   */
   const syncNonce = useCallback(async () => {
-    if (!wallet || !provider || activeChain.chainType === 'TRON') return;
+    if (!wallet || !provider || activeChain.chainType === 'TRON' || isSyncingRef.current) return;
+    
+    isSyncingRef.current = true;
     try {
       const n = await provider.getTransactionCount(wallet.address, 'pending');
       localNonceRef.current = n;
     } catch (e) {
       console.error("Nonce sync failed", e);
+    } finally {
+      isSyncingRef.current = false;
     }
   }, [wallet, provider, activeChain]);
 
@@ -79,9 +87,6 @@ export const useTransactionManager = ({
     return () => clearInterval(interval);
   }, [provider, transactions, activeChain, activeChainId, fetchData]);
 
-  /**
-   * 核心修正：handleSendSubmit 内部逻辑分支
-   */
   const handleSendSubmit = async (data: any): Promise<ProcessResult> => {
     try {
       const isTron = activeChain.chainType === 'TRON';
@@ -93,11 +98,6 @@ export const useTransactionManager = ({
       const displaySymbol = data.asset === 'NATIVE' ? activeChain.currencySymbol : data.asset;
       const token = activeChain.tokens.find((t: TokenConfig) => t.symbol === data.asset);
 
-      /**
-       * 【多签逻辑修复】
-       * 此处必须检查 activeAccountType。如果为 SAFE，强制走多签提议流程。
-       * 之前的错误是因为 data.activeAccountType 为空，导致 Safe 模式下走到了 EOA 逻辑。
-       */
       if (activeAccountType === 'SAFE') {
         if (!handleSafeProposal) throw new Error("Safe manager not initialized");
         
@@ -106,14 +106,12 @@ export const useTransactionManager = ({
         let callData = data.customData || "0x";
 
         if (data.asset !== 'NATIVE' && token) {
-          // 代币转账：Safe 执行的是代币合约的 transfer 调用
           targetAddress = token.address;
           value = 0n; 
           const erc20Iface = new ethers.Interface(ERC20_ABI);
           const amountParsed = ethers.parseUnits(data.amount || "0", token.decimals);
           callData = erc20Iface.encodeFunctionData("transfer", [data.recipient, amountParsed]);
         } else {
-          // 原生代币转账：Safe 直接发送 Value
           value = ethers.parseEther(data.amount || "0");
           callData = "0x";
         }
@@ -127,7 +125,6 @@ export const useTransactionManager = ({
         return { success };
       }
 
-      // TRON 发送逻辑 (仅支持 EOA，Tron 目前无多签 UI)
       if (isTron) {
         if (!tronPrivateKey) throw new Error("TRON private key missing");
         const decimals = data.asset === 'NATIVE' ? 6 : (token?.decimals || 6);
@@ -159,7 +156,6 @@ export const useTransactionManager = ({
         }
       }
 
-      // EVM EOA 发送逻辑 (普通钱包私钥直转)
       if (localNonceRef.current === null) {
         await syncNonce();
       }
