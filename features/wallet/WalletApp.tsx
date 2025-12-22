@@ -271,7 +271,7 @@ export const WalletApp: React.FC = () => {
 
       {/* Main Content Area */}
       <main className="flex-1 overflow-y-auto p-4 md:p-8 relative">
-         <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/white-diamond.png')] opacity-10 pointer-events-none"></div>
+         <div className="absolute inset-0 bg-tech-diamond opacity-[0.03] pointer-events-none"></div>
          
          <div className="max-w-5xl mx-auto relative z-10">
             {localNotification && <NotificationToast message={localNotification} onClose={() => setLocalNotification(null)} />}

@@ -27,7 +27,7 @@ export const WalletOnboarding: React.FC<WalletOnboardingProps> = ({ input, setIn
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none opacity-40">
         <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-[#0062ff]/10 rounded-full blur-[150px]"></div>
         <div className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] bg-[#00d4ff]/10 rounded-full blur-[150px]"></div>
-        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5"></div>
+        <div className="absolute inset-0 bg-tech-dots opacity-[0.05]"></div>
       </div>
 
       <div className="max-w-md w-full relative z-10 animate-tech-in">
