@@ -10,8 +10,45 @@ import { ChainConfig, TokenConfig } from '../types';
 import { ERC20_ABI } from '../config';
 
 /**
- * 【架构设计：中心化状态编排器 (The Orchestrator)】
+ * 【核心黑科技：请求塌陷控制器 (Request Collapsing Provider)】
+ * 
+ * 解决痛点：React 多个 Hook 并行初始化时，会产生完全相同的 RPC 调用（如 eth_gasPrice）。
+ * 实现：在底层拦截所有 send 指令。如果同一个 method+params 的请求正在执行，则后续调用直接挂载到该 Promise 上。
  */
+class DeduplicatingJsonRpcProvider extends ethers.JsonRpcProvider {
+  private _inflight = new Map<string, Promise<any>>();
+
+  async send(method: string, params: Array<any>): Promise<any> {
+    // 只有特定的查询方法需要去重，避免拦截执行类方法
+    const cacheableMethods = [
+      'eth_chainId', 
+      'eth_gasPrice', 
+      'eth_maxPriorityFeePerGas', 
+      'eth_getBlockByNumber', 
+      'eth_feeHistory'
+    ];
+
+    if (!cacheableMethods.includes(method)) {
+      return super.send(method, params);
+    }
+
+    const key = `${method}:${JSON.stringify(params)}`;
+    const existing = this._inflight.get(key);
+    
+    if (existing) {
+      // console.debug(`[RPC] Collapsed redundant request: ${method}`);
+      return existing;
+    }
+
+    const promise = super.send(method, params).finally(() => {
+      this._inflight.delete(key);
+    });
+
+    this._inflight.set(key, promise);
+    return promise;
+  }
+}
+
 export const useEvmWallet = () => {
   const storage = useWalletStorage();
   const { 
@@ -19,7 +56,6 @@ export const useEvmWallet = () => {
     customTokens, setCustomTokens, pendingSafeTxs, setPendingSafeTxs 
   } = storage;
   
-  // 确保 chains 不为空
   const initialChainId = chains.length > 0 ? chains[0].id : 1;
   const state = useWalletState(initialChainId);
   const { 
@@ -27,7 +63,6 @@ export const useEvmWallet = () => {
     activeChainId, setActiveChainId, view, setView, error, setError, notification, setNotification,
     tokenToEdit, setTokenToEdit, isChainModalOpen, setIsChainModalOpen, isAddTokenModalOpen, setIsAddTokenModalOpen,
     handleImport, privateKeyOrPhrase, setPrivateKeyOrPhrase, setWallet, isMenuOpen, setIsMenuOpen, isLoading, setIsLoading,
-    errorObject
   } = state;
 
   const activeChain = useMemo(() => {
@@ -41,16 +76,14 @@ export const useEvmWallet = () => {
   }, [wallet, activeAccountType, activeSafeAddress, activeChain, state.tronWalletAddress]);
 
   /**
-   * 【性能优化：静态网络模式】
-   * 修复点：传入 activeChainId 并设置 staticNetwork: true。
-   * 效果：Ethers 不再反复请求 eth_chainId，直接使用我们配置中的 ID，极大减少 RPC 额度消耗。
+   * 【性能优化：注入去重 Provider】
    */
   const provider = useMemo(() => {
     if (activeChain.chainType === 'TRON' || !activeChain.defaultRpcUrl) return null;
     
-    // 使用静态网络配置，避免冗余的 eth_chainId 调用
     const network = ethers.Network.from(activeChain.id);
-    return new ethers.JsonRpcProvider(activeChain.defaultRpcUrl, network, {
+    // 使用我们自定义的去重类，而不是原生的 JsonRpcProvider
+    return new DeduplicatingJsonRpcProvider(activeChain.defaultRpcUrl, network, {
       staticNetwork: network
     });
   }, [activeChain]);
@@ -64,7 +97,7 @@ export const useEvmWallet = () => {
     activeChainTokens, provider, setIsLoading, setError
   });
 
-  const { fetchData, balance, tokenBalances, safeDetails, isInitialFetchDone } = dataLayer;
+  const { fetchData, balance, tokenBalances, safeDetails } = dataLayer;
 
   const safeHandlerRef = useRef<any>(null);
   const txMgr = useTransactionManager({
@@ -79,8 +112,6 @@ export const useEvmWallet = () => {
     }
   });
 
-  const { transactions, syncNonce, handleSendSubmit } = txMgr;
-
   const safeMgr = useSafeManager({
     wallet, activeSafeAddress, activeChainId, activeChain, provider, safeDetails,
     setPendingSafeTxs, setTrackedSafes, setActiveAccountType, setActiveSafeAddress,
@@ -88,7 +119,6 @@ export const useEvmWallet = () => {
     addTransactionRecord: txMgr.addTransactionRecord
   });
 
-  // 设置 Safe 提议处理器
   useEffect(() => { 
     if (safeMgr && safeMgr.handleSafeProposal) {
       safeHandlerRef.current = safeMgr.handleSafeProposal; 
@@ -98,6 +128,7 @@ export const useEvmWallet = () => {
   useEffect(() => {
     const isCoreView = view === 'intro_animation' || view === 'dashboard';
     if (wallet && isCoreView) {
+      // 这里的并发调用现在会被 DeduplicatingJsonRpcProvider 完美合并
       fetchData();
       if (activeChain.chainType !== 'TRON') txMgr.syncNonce();
     }
@@ -135,11 +166,8 @@ export const useEvmWallet = () => {
       setIsAddTokenModalOpen(false);
       setNotification(`Imported ${symbol} successfully`);
     } catch (e) {
-      console.error("Token import failure", e);
-      setError("Failed to import token. Verify address and network compatibility.");
-    } finally {
-      setIsLoading(false);
-    }
+      setError("Failed to import token.");
+    } finally { setIsLoading(false); }
   };
 
   const handleUpdateToken = (token: TokenConfig) => {
@@ -148,16 +176,7 @@ export const useEvmWallet = () => {
       [activeChainId]: (prev[activeChainId] || []).map(t => t.address === token.address ? token : t)
     }));
     setTokenToEdit(null);
-    setNotification("Token metadata updated");
-  };
-
-  const handleSaveToken = (token: TokenConfig) => {
-    setCustomTokens(prev => ({
-      ...prev,
-      [activeChainId]: (prev[activeChainId] || []).map(t => t.address === token.address ? token : t)
-    }));
-    setTokenToEdit(null);
-    setNotification("Token metadata updated");
+    setNotification("Token updated");
   };
 
   const handleRemoveToken = (address: string) => {
@@ -166,16 +185,11 @@ export const useEvmWallet = () => {
       [activeChainId]: (prev[activeChainId] || []).filter(t => t.address !== address)
     }));
     setTokenToEdit(null);
-    setNotification("Token removed from display");
+    setNotification("Token removed");
   };
 
-  // 返回组合后的状态和方法
   return { 
-    ...state, 
-    ...dataLayer, 
-    ...txMgr, 
-    ...safeMgr, 
-    ...storage,
+    ...state, ...dataLayer, ...txMgr, ...safeMgr, ...storage,
     activeChain, activeAddress, activeChainTokens, provider,
     handleSaveChain, handleTrackSafe, confirmAddToken, handleUpdateToken, handleRemoveToken,
     currentNonce: safeDetails?.nonce || 0
