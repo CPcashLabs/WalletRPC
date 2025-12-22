@@ -40,13 +40,29 @@ export const useWalletData = ({
   const lastFetchTime = useRef<number>(0);
   const FETCH_COOLDOWN = 3000; 
 
+  // 监听钱包注销
   useEffect(() => {
     if (!wallet) {
       setIsInitialFetchDone(false);
       verifiedContractRef.current = null;
       lastFetchTime.current = 0;
+      setSafeDetails(null);
+      setBalance('0.00');
     }
   }, [wallet]);
+
+  /**
+   * 【关键修复：账户切换状态清理】
+   * 意图：解决切换不同 Safe 或 EOA 时，UI 残留上一个账户数据的问题。
+   * 逻辑：只要地址或链发生变化，立即清空内存中的合约验证状态和多签细节。
+   */
+  useEffect(() => {
+    verifiedContractRef.current = null;
+    lastFetchTime.current = 0; 
+    setSafeDetails(null); // 立即清理成员列表，防止多签合约间数据污染
+    setBalance('0.00');    // 重置余额显示
+    setTokenBalances({}); // 重置代币列表
+  }, [activeAddress, activeChain.id]);
 
   /**
    * 【核心同步逻辑：并行查询策略】
@@ -106,6 +122,7 @@ export const useWalletData = ({
              safeContract.getThreshold(),
              safeContract.nonce()
           ]);
+          // 确保写入的是当前 activeAddress 的数据
           setSafeDetails({ owners, threshold: Number(threshold), nonce: Number(nonce) });
         }
 
