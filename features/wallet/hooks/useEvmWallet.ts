@@ -40,9 +40,19 @@ export const useEvmWallet = () => {
     return activeChain.chainType === 'TRON' ? state.tronWalletAddress : wallet.address;
   }, [wallet, activeAccountType, activeSafeAddress, activeChain, state.tronWalletAddress]);
 
+  /**
+   * 【性能优化：静态网络模式】
+   * 修复点：传入 activeChainId 并设置 staticNetwork: true。
+   * 效果：Ethers 不再反复请求 eth_chainId，直接使用我们配置中的 ID，极大减少 RPC 额度消耗。
+   */
   const provider = useMemo(() => {
     if (activeChain.chainType === 'TRON' || !activeChain.defaultRpcUrl) return null;
-    return new ethers.JsonRpcProvider(activeChain.defaultRpcUrl);
+    
+    // 使用静态网络配置，避免冗余的 eth_chainId 调用
+    const network = ethers.Network.from(activeChain.id);
+    return new ethers.JsonRpcProvider(activeChain.defaultRpcUrl, network, {
+      staticNetwork: network
+    });
   }, [activeChain]);
 
   const activeChainTokens = useMemo(() => {
@@ -61,7 +71,7 @@ export const useEvmWallet = () => {
     wallet, 
     tronPrivateKey,
     provider, activeChain, activeChainId,
-    activeAccountType, // 注入账户类型，修复资金来源错误问题
+    activeAccountType,
     fetchData, setError,
     handleSafeProposal: async (t: string, v: bigint, d: string, s: string) => { 
         if (safeHandlerRef.current) return await safeHandlerRef.current(t, v, d, s); 
@@ -133,6 +143,15 @@ export const useEvmWallet = () => {
   };
 
   const handleUpdateToken = (token: TokenConfig) => {
+    setCustomTokens(prev => ({
+      ...prev,
+      [activeChainId]: (prev[activeChainId] || []).map(t => t.address === token.address ? token : t)
+    }));
+    setTokenToEdit(null);
+    setNotification("Token metadata updated");
+  };
+
+  const handleSaveToken = (token: TokenConfig) => {
     setCustomTokens(prev => ({
       ...prev,
       [activeChainId]: (prev[activeChainId] || []).map(t => t.address === token.address ? token : t)
