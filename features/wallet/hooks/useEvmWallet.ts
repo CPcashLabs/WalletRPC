@@ -125,37 +125,35 @@ export const useEvmWallet = () => {
     }
   }, [activeChainId, activeChain, activeAccountType, activeSafeAddress, trackedSafes]);
 
-  // 优化：切链时重置 Nonce 缓存，但不在此处发起新请求
+  // 优化：切链时重置 Nonce 缓存
   useEffect(() => {
     txMgr.localNonceRef.current = null;
   }, [activeChainId]);
 
   /**
    * 核心数据同步逻辑
-   * 优化点：去除了 [view] 依赖。
-   * 行为：仅在初始化、切换钱包、切换网络或代币列表变更时执行全量同步。
-   * 在 Dashboard、Settings 间切换不再触发任何 RPC。
    */
   useEffect(() => {
-    if (wallet && view !== 'onboarding') {
+    const isCoreView = view === 'intro_animation' || view === 'dashboard';
+    
+    if (wallet && isCoreView) {
       dataLayer.fetchData();
       if (activeChain.chainType !== 'TRON') {
         txMgr.syncNonce();
       }
     }
-    // 明确移除 view 依赖，实现导航零 RPC 开销
-  }, [activeChainId, activeAccountType, activeSafeAddress, wallet, activeChainTokens]);
+  }, [activeChainId, activeAccountType, activeSafeAddress, wallet, activeChainTokens, view]);
 
   const confirmAddToken = async (address: string) => {
      if (activeChain.chainType === 'TRON') {
-         setError("当前版本暂不支持 Tron 自定义代币");
+         setError("Tron custom tokens are not supported in this version.");
          return;
      }
-     if (!ethers.isAddress(address)) { setError("地址格式无效"); return; }
+     if (!ethers.isAddress(address)) { setError("Invalid address format."); return; }
      state.setIsAddingToken(true);
      setError(null);
      try {
-        if (!provider) throw new Error("Provider 未初始化");
+        if (!provider) throw new Error("Provider not initialized.");
         
         const code = await provider.getCode(address);
         if (code === '0x' || code === '0x0') {
@@ -172,14 +170,14 @@ export const useEvmWallet = () => {
         const newToken: TokenConfig = { symbol, name, decimals: Number(decimals), address: address, isCustom: true };
         
         setCustomTokens(prev => ({ ...prev, [activeChainId]: [...(prev[activeChainId] || []), newToken] }));
-        setNotification(`已添加 ${symbol}`);
+        setNotification(`Token Added: ${symbol}`);
         state.setIsAddTokenModalOpen(false); 
      } catch (e: any) { 
         console.error(e); 
         if (e.message === "NOT_A_CONTRACT") {
-            setError("无效地址：目标不是一个合约。");
+            setError(t("safe.error_not_contract"));
         } else {
-            setError("代币导入失败：无法识别此代币。"); 
+            setError("Token import failed: Address check failed."); 
         }
      } finally { state.setIsAddingToken(false); }
   };
@@ -200,7 +198,7 @@ export const useEvmWallet = () => {
   };
   
   const handleSaveChain = (newConfig: ChainConfig) => {
-     if (!newConfig.name || !newConfig.defaultRpcUrl || !newConfig.id) { setError("缺少必填字段"); return; }
+     if (!newConfig.name || !newConfig.defaultRpcUrl || !newConfig.id) { setError("Required fields missing."); return; }
      newConfig.isCustom = true;
      if (!newConfig.tokens) newConfig.tokens = [];
      setChains(prev => {
@@ -240,7 +238,7 @@ export const useEvmWallet = () => {
       setIsLoading(true);
       try {
           const code = await provider.getCode(trimmed);
-          if (code === '0x') {
+          if (code === '0x' || code === '0x0') {
               throw new Error("NOT_A_CONTRACT");
           }
 

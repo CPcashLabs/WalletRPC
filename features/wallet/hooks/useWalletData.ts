@@ -62,9 +62,13 @@ export const useWalletData = ({
    * 获取链上数据
    */
   const fetchData = async () => {
-    if (!wallet || !activeAddress) return;
-    setIsLoading(true);
+    // 如果没有钱包，直接退出，不设置 isInitialFetchDone 为 true
+    if (!wallet) return;
 
+    // 如果有钱包但地址尚未派生完成（竞态条件），暂时退出，等待下一次触发
+    if (!activeAddress) return;
+
+    setIsLoading(true);
     try {
       if (activeChain.chainType === 'TRON') {
          // --- TRON 逻辑 ---
@@ -88,44 +92,67 @@ export const useWalletData = ({
          // --- EVM 逻辑 ---
          if (!provider) return;
          
-         // 并行获取原生余额和 Nonce/Safe数据
          const tasks: Promise<any>[] = [provider.getBalance(activeAddress)];
+         let isContractVerified = true;
          
          if (activeAccountType === 'SAFE') {
-            // 优化点：只有未验证过该地址时才调用 getCode
+            // Check if address is a contract only once per session/chain
             if (verifiedContractRef.current !== activeAddress) {
-               const code = await provider.getCode(activeAddress);
-               if (code === '0x' || code === '0x0') {
-                  setSafeDetails(null);
-                  verifiedContractRef.current = null;
-                  throw new Error("NOT_A_CONTRACT");
+               try {
+                  const code = await provider.getCode(activeAddress);
+                  if (code === '0x' || code === '0x0') {
+                    isContractVerified = false;
+                    verifiedContractRef.current = null;
+                  } else {
+                    verifiedContractRef.current = activeAddress;
+                  }
+               } catch (e) {
+                  // If getCode fails, we assume it's a network error rather than "not a contract"
+                  isContractVerified = false;
                }
-               verifiedContractRef.current = activeAddress;
             }
             
-            const safeContract = new ethers.Contract(activeAddress, SAFE_ABI, provider);
-            tasks.push(safeContract.getOwners());
-            tasks.push(safeContract.getThreshold());
-            tasks.push(safeContract.nonce());
+            if (isContractVerified) {
+              const safeContract = new ethers.Contract(activeAddress, SAFE_ABI, provider);
+              tasks.push(safeContract.getOwners());
+              tasks.push(safeContract.getThreshold());
+              tasks.push(safeContract.nonce());
+            } else {
+              // Soft fail: Just push nulls to keep task indexing consistent if needed, 
+              // but here we'll handle by checking length later.
+              setSafeDetails(null);
+              setError("Current vault address is not a contract on this network.");
+            }
          } else {
             tasks.push(provider.getTransactionCount(activeAddress));
          }
 
          const results = await Promise.all(tasks);
-         setBalance(ethers.formatEther(results[0]));
+         
+         // Always set balance if we have at least the first task result
+         if (results.length > 0) {
+            setBalance(ethers.formatEther(results[0]));
+         }
 
          if (activeAccountType === 'SAFE') {
-            setSafeDetails({ 
-               owners: results[1], 
-               threshold: Number(results[2]), 
-               nonce: Number(results[3]) 
-            });
+            if (results.length >= 4) {
+               setSafeDetails({ 
+                  owners: results[1], 
+                  threshold: Number(results[2]), 
+                  nonce: Number(results[3]) 
+               });
+            } else {
+               // Safe tasks were skipped due to isContractVerified = false
+               setSafeDetails(null);
+            }
          } else {
-            setCurrentNonce(Number(results[1]));
+            if (results.length >= 2) {
+               setCurrentNonce(Number(results[1]));
+            }
             setSafeDetails(null);
          }
 
-         // Token 余额获取
+         // Token 余额获取 - Always proceed even if Safe check failed
          const nextBalances: Record<string, string> = {};
          await Promise.all(activeChainTokens.map(async (token) => {
             try {
@@ -141,13 +168,7 @@ export const useWalletData = ({
 
     } catch (e: any) {
       console.error(e);
-      if (activeAccountType === 'SAFE') {
-         setSafeDetails(null);
-         if (e.message === 'NOT_A_CONTRACT') return; 
-         setError("Safe 连通性异常，请检查 RPC 节点状态");
-      } else {
-         setError("数据获取失败: " + (e.message || "网络波动"));
-      }
+      setError("Data synchronization fault: " + (e.message || "Network Timeout"));
     } finally {
       setIsLoading(false);
       setIsInitialFetchDone(true);
