@@ -6,8 +6,7 @@ import { ERC20_ABI, SAFE_ABI } from '../config';
 import { SafeDetails, ChainConfig, TokenConfig } from '../types';
 
 /**
- * 【数据层核心 Hook】
- * 引入冷却时间机制，防止 RPC 过载。
+ * 【数据抓取引擎 - 高可靠同步版】
  */
 export const useWalletData = ({
   wallet,
@@ -25,11 +24,21 @@ export const useWalletData = ({
   const [safeDetails, setSafeDetails] = useState<SafeDetails | null>(null);
   const [isInitialFetchDone, setIsInitialFetchDone] = useState(false);
 
+  /**
+   * 【RPC 优化：合约身份缓存 (Contract Identity Cache)】
+   * 意图：多签钱包地址在链上是不可变的合约。
+   * 如何减少 RPC：一旦 getCode 确认过该地址为合约，verifiedContractRef 会锁死该状态。
+   * 结果：在同一会话中，对同一个 Safe 地址的重复探测请求从 N 次降为 1 次。
+   */
   const verifiedContractRef = useRef<string | null>(null);
   
-  // 性能优化：上次抓取的时间戳，用于节流
+  /**
+   * 【RPC 优化：全量同步节流 (Fetch Throttling)】
+   * 意图：防止用户疯狂点击“刷新”或组件频繁 Mount 导致的 RPC 风暴。
+   * 策略：强制 3 秒静默期。
+   */
   const lastFetchTime = useRef<number>(0);
-  const FETCH_COOLDOWN = 3000; // 3秒内禁止重复全量同步
+  const FETCH_COOLDOWN = 3000; 
 
   useEffect(() => {
     if (!wallet) {
@@ -39,91 +48,79 @@ export const useWalletData = ({
     }
   }, [wallet]);
 
-  useEffect(() => {
-    verifiedContractRef.current = null;
-    lastFetchTime.current = 0; // 切换地址时重置节流
-  }, [activeAddress, activeChain.id]);
-
   /**
-   * 【逻辑：带节流的数据同步】
+   * 【核心同步逻辑：并行查询策略】
    */
   const fetchData = async (force: boolean = false) => {
     if (!wallet || !activeAddress) return;
 
     const now = Date.now();
-    // 节流检查：如果不是强制刷新且在冷却时间内，直接跳过
-    if (!force && (now - lastFetchTime.current < FETCH_COOLDOWN)) {
-      console.log("Fetch skipped due to cooldown.");
-      return;
-    }
+    if (!force && (now - lastFetchTime.current < FETCH_COOLDOWN)) return;
 
     setIsLoading(true);
     try {
-      lastFetchTime.current = now; // 更新最后同步时间
+      lastFetchTime.current = now; 
       const currentBalances: Record<string, string> = {};
 
       if (activeChain.chainType === 'TRON') {
         const host = activeChain.defaultRpcUrl;
+        // 波场并行同步：一次性查询原生余额和代币余额
+        const [balSun, ...tokenResults] = await Promise.all([
+          TronService.getBalance(host, activeAddress),
+          ...activeChainTokens.map((t: TokenConfig) => TronService.getTRC20Balance(host, t.address, activeAddress))
+        ]);
         
-        const balSun = await TronService.getBalance(host, activeAddress);
         setBalance(ethers.formatUnits(balSun, 6)); 
-
-        await Promise.all(activeChainTokens.map(async (token: TokenConfig) => {
-          const bal = await TronService.getTRC20Balance(host, token.address, activeAddress);
-          currentBalances[token.symbol] = ethers.formatUnits(bal, token.decimals);
-        }));
-        
+        activeChainTokens.forEach((t: TokenConfig, i: number) => {
+           currentBalances[t.symbol] = ethers.formatUnits(tokenResults[i], t.decimals);
+        });
         setTokenBalances(currentBalances);
       } else {
         if (!provider) return;
         
+        // --- EVM 并行同步池 ---
+        // 意图：将所有必要的初始化查询压入单个 Batch。
         const baseTasks: Promise<any>[] = [provider.getBalance(activeAddress)];
-        let isContractVerified = true;
         
-        if (activeAccountType === 'SAFE') {
-          if (verifiedContractRef.current !== activeAddress) {
-            try {
-              const code = await provider.getCode(activeAddress);
-              if (code === '0x' || code === '0x0') {
-                isContractVerified = false;
-              } else {
-                verifiedContractRef.current = activeAddress;
-              }
-            } catch (e) { isContractVerified = false; }
-          }
-          
-          if (isContractVerified) {
-            const safeContract = new ethers.Contract(activeAddress, SAFE_ABI, provider);
-            baseTasks.push(safeContract.getOwners(), safeContract.getThreshold(), safeContract.nonce());
-          }
+        let isContractVerified = verifiedContractRef.current === activeAddress;
+        if (activeAccountType === 'SAFE' && !isContractVerified) {
+           baseTasks.push(provider.getCode(activeAddress));
         }
 
         const baseResults = await Promise.all(baseTasks);
         setBalance(ethers.formatEther(baseResults[0]));
 
-        if (activeAccountType === 'SAFE' && isContractVerified && baseResults.length > 1) {
-          setSafeDetails({
-            owners: baseResults[1],
-            threshold: Number(baseResults[2]),
-            nonce: Number(baseResults[3])
-          });
+        if (activeAccountType === 'SAFE' && !isContractVerified) {
+           const code = baseResults[1];
+           if (code !== '0x' && code !== '0x0') {
+              verifiedContractRef.current = activeAddress;
+              isContractVerified = true;
+           }
         }
 
-        const tokenTasks = activeChainTokens.map(async (token: TokenConfig) => {
+        // 如果是已验证的 Safe，并行抓取多签元数据
+        if (activeAccountType === 'SAFE' && isContractVerified) {
+          const safeContract = new ethers.Contract(activeAddress, SAFE_ABI, provider);
+          const [owners, threshold, nonce] = await Promise.all([
+             safeContract.getOwners(),
+             safeContract.getThreshold(),
+             safeContract.nonce()
+          ]);
+          setSafeDetails({ owners, threshold: Number(threshold), nonce: Number(nonce) });
+        }
+
+        // 批量获取 ERC20 余额
+        await Promise.all(activeChainTokens.map(async (token: TokenConfig) => {
           try {
             const contract = new ethers.Contract(token.address, ERC20_ABI, provider);
             const bal = await contract.balanceOf(activeAddress);
             currentBalances[token.symbol] = ethers.formatUnits(bal, token.decimals);
-          } catch (e) {
-            currentBalances[token.symbol] = '0.00';
-          }
-        });
+          } catch (e) { currentBalances[token.symbol] = '0.00'; }
+        }));
 
-        await Promise.all(tokenTasks);
         setTokenBalances(currentBalances);
       }
     } catch (e: any) {
-      console.error(e);
       setError("Data synchronization fault");
     } finally {
       setIsLoading(false);
