@@ -19,7 +19,9 @@ export const useEvmWallet = () => {
     customTokens, setCustomTokens, pendingSafeTxs, setPendingSafeTxs 
   } = storage;
   
-  const state = useWalletState(chains[0].id);
+  // 确保 chains 不为空
+  const initialChainId = chains.length > 0 ? chains[0].id : 1;
+  const state = useWalletState(initialChainId);
   const { 
     wallet, tronPrivateKey, activeAccountType, setActiveAccountType, activeSafeAddress, setActiveSafeAddress,
     activeChainId, setActiveChainId, view, setView, error, setError, notification, setNotification,
@@ -57,8 +59,9 @@ export const useEvmWallet = () => {
   const safeHandlerRef = useRef<any>(null);
   const txMgr = useTransactionManager({
     wallet, 
-    tronPrivateKey, // 传入 TRON 私钥以支持签名
+    tronPrivateKey,
     provider, activeChain, activeChainId,
+    activeAccountType, // 注入账户类型，修复资金来源错误问题
     fetchData, setError,
     handleSafeProposal: async (t: string, v: bigint, d: string, s: string) => { 
         if (safeHandlerRef.current) return await safeHandlerRef.current(t, v, d, s); 
@@ -75,7 +78,12 @@ export const useEvmWallet = () => {
     addTransactionRecord: txMgr.addTransactionRecord
   });
 
-  useEffect(() => { safeHandlerRef.current = safeMgr.handleSafeProposal; }, [safeMgr.handleSafeProposal]);
+  // 设置 Safe 提议处理器
+  useEffect(() => { 
+    if (safeMgr && safeMgr.handleSafeProposal) {
+      safeHandlerRef.current = safeMgr.handleSafeProposal; 
+    }
+  }, [safeMgr?.handleSafeProposal]);
 
   useEffect(() => {
     const isCoreView = view === 'intro_animation' || view === 'dashboard';
@@ -142,8 +150,13 @@ export const useEvmWallet = () => {
     setNotification("Token removed from display");
   };
 
+  // 返回组合后的状态和方法
   return { 
-    ...state, ...dataLayer, ...txMgr, ...safeMgr, ...storage,
+    ...state, 
+    ...dataLayer, 
+    ...txMgr, 
+    ...safeMgr, 
+    ...storage,
     activeChain, activeAddress, activeChainTokens, provider,
     handleSaveChain, handleTrackSafe, confirmAddToken, handleUpdateToken, handleRemoveToken,
     currentNonce: safeDetails?.nonce || 0

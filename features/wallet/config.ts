@@ -38,9 +38,15 @@ export const SAFE_ABI = [
   "function changeThreshold(uint256 _threshold)"
 ];
 
+/**
+ * 核心修正：移除 ProxyCreation 事件参数的 indexed 标记
+ * 大部分链上的 GnosisSafeProxyFactory v1.3.0 事件定义为：
+ * event ProxyCreation(address proxy, address singleton);
+ * 如果在 ABI 中错误标注 indexed，Ethers 会在 topics 中寻找地址，导致解析失败。
+ */
 export const PROXY_FACTORY_ABI = [
   "function createProxyWithNonce(address _singleton, bytes initializer, uint256 saltNonce) returns (address proxy)",
-  "event ProxyCreation(address indexed proxy, address indexed singleton)"
+  "event ProxyCreation(address proxy, address singleton)"
 ];
 
 export const ERC20_ABI = [

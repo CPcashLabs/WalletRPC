@@ -5,6 +5,7 @@ import { TransactionRecord, ChainConfig, TokenConfig } from '../types';
 import { FeeService } from '../../../services/feeService';
 import { handleTxError, normalizeHex } from '../utils';
 import { TronService } from '../../../services/tronService';
+import { ERC20_ABI } from '../config';
 
 export interface ProcessResult {
   success: boolean;
@@ -22,6 +23,7 @@ export const useTransactionManager = ({
   provider,
   activeChain,
   activeChainId,
+  activeAccountType, // 新增：从配置获取当前账户类型
   fetchData,
   setError,
   handleSafeProposal
@@ -41,11 +43,9 @@ export const useTransactionManager = ({
   }, [wallet, provider, activeChain]);
 
   useEffect(() => {
-    // 逻辑：如果是 TRON 网络，跳过基于 EVM Provider 的回执轮询。
     if (activeChain.chainType === 'TRON' || !provider || transactions.length === 0) return;
     
     const interval = setInterval(async () => {
-      // 核心修复 1：使用显式的数值转换进行链 ID 过滤，防止 string/number 类型不匹配。
       const currentId = Number(activeChainId);
       const pending = transactions.filter(t => 
         t.status === 'submitted' && 
@@ -59,19 +59,15 @@ export const useTransactionManager = ({
         if (!tx.hash) continue;
         
         try {
-          // 核心修复 2：使用 normalizeHex 确保哈希严格符合 0x + 64位十六进制规范。
           const normalizedHash = normalizeHex(tx.hash);
-          
           const receipt = await provider.getTransactionReceipt(normalizedHash);
           if (receipt) {
             setTransactions(prev => prev.map(t => 
               t.id === tx.id ? { ...t, status: receipt.status === 1 ? 'confirmed' : 'failed' } : t
             ));
-            // 延迟刷新数据，确保索引节点已同步
             if (receipt.status === 1) setTimeout(fetchData, 1000);
           }
         } catch (e) {
-          // 针对特定的 RPC 错误进行静默处理，避免干扰用户控制台
           const errStr = String(e);
           if (!errStr.includes("json: cannot unmarshal")) {
             console.error("Receipt check failed", e);
@@ -83,6 +79,9 @@ export const useTransactionManager = ({
     return () => clearInterval(interval);
   }, [provider, transactions, activeChain, activeChainId, fetchData]);
 
+  /**
+   * 核心修正：handleSendSubmit 内部逻辑分支
+   */
   const handleSendSubmit = async (data: any): Promise<ProcessResult> => {
     try {
       const isTron = activeChain.chainType === 'TRON';
@@ -92,19 +91,45 @@ export const useTransactionManager = ({
       }
 
       const displaySymbol = data.asset === 'NATIVE' ? activeChain.currencySymbol : data.asset;
+      const token = activeChain.tokens.find((t: TokenConfig) => t.symbol === data.asset);
 
-      if (data.activeAccountType === 'SAFE') {
+      /**
+       * 【多签逻辑修复】
+       * 此处必须检查 activeAccountType。如果为 SAFE，强制走多签提议流程。
+       * 之前的错误是因为 data.activeAccountType 为空，导致 Safe 模式下走到了 EOA 逻辑。
+       */
+      if (activeAccountType === 'SAFE') {
         if (!handleSafeProposal) throw new Error("Safe manager not initialized");
-        const amountWei = ethers.parseUnits(data.amount || "0", data.asset === 'NATIVE' ? 18 : 6); 
-        const success = await handleSafeProposal(data.recipient, amountWei, data.customData || "0x", `Send ${data.amount} ${displaySymbol}`);
+        
+        let targetAddress = data.recipient;
+        let value = 0n;
+        let callData = data.customData || "0x";
+
+        if (data.asset !== 'NATIVE' && token) {
+          // 代币转账：Safe 执行的是代币合约的 transfer 调用
+          targetAddress = token.address;
+          value = 0n; 
+          const erc20Iface = new ethers.Interface(ERC20_ABI);
+          const amountParsed = ethers.parseUnits(data.amount || "0", token.decimals);
+          callData = erc20Iface.encodeFunctionData("transfer", [data.recipient, amountParsed]);
+        } else {
+          // 原生代币转账：Safe 直接发送 Value
+          value = ethers.parseEther(data.amount || "0");
+          callData = "0x";
+        }
+
+        const success = await handleSafeProposal(
+          targetAddress, 
+          value, 
+          callData, 
+          `Send ${data.amount} ${displaySymbol}`
+        );
         return { success };
       }
 
-      // TRON 发送逻辑
+      // TRON 发送逻辑 (仅支持 EOA，Tron 目前无多签 UI)
       if (isTron) {
         if (!tronPrivateKey) throw new Error("TRON private key missing");
-        
-        const token = activeChain.tokens.find((t: TokenConfig) => t.symbol === data.asset);
         const decimals = data.asset === 'NATIVE' ? 6 : (token?.decimals || 6);
         const amountSun = ethers.parseUnits(data.amount || "0", decimals);
 
@@ -134,17 +159,28 @@ export const useTransactionManager = ({
         }
       }
 
-      // EVM 发送逻辑
+      // EVM EOA 发送逻辑 (普通钱包私钥直转)
       if (localNonceRef.current === null) {
         await syncNonce();
       }
 
-      const amountWei = ethers.parseEther(data.amount || "0");
-      const txRequest: ethers.TransactionRequest = {
-        to: data.recipient,
-        value: amountWei,
-        data: data.customData || "0x"
-      };
+      let txRequest: ethers.TransactionRequest;
+      
+      if (data.asset !== 'NATIVE' && token) {
+        const erc20Iface = new ethers.Interface(ERC20_ABI);
+        const amountParsed = ethers.parseUnits(data.amount || "0", token.decimals);
+        txRequest = {
+          to: token.address,
+          value: 0n,
+          data: erc20Iface.encodeFunctionData("transfer", [data.recipient, amountParsed])
+        };
+      } else {
+        txRequest = {
+          to: data.recipient,
+          value: ethers.parseEther(data.amount || "0"),
+          data: data.customData || "0x"
+        };
+      }
 
       const feeData = await FeeService.getOptimizedFeeData(provider, activeChainId);
       const overrides = FeeService.buildOverrides(feeData);
