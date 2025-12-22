@@ -7,8 +7,7 @@ import { SafeDetails, ChainConfig, TokenConfig } from '../types';
 
 /**
  * 【数据层核心 Hook】
- * 目的：解耦链上数据获取逻辑。
- * 解决问题：补全代币余额获取逻辑，实现多链并行查询。
+ * 引入冷却时间机制，防止 RPC 过载。
  */
 export const useWalletData = ({
   wallet,
@@ -27,36 +26,48 @@ export const useWalletData = ({
   const [isInitialFetchDone, setIsInitialFetchDone] = useState(false);
 
   const verifiedContractRef = useRef<string | null>(null);
+  
+  // 性能优化：上次抓取的时间戳，用于节流
+  const lastFetchTime = useRef<number>(0);
+  const FETCH_COOLDOWN = 3000; // 3秒内禁止重复全量同步
 
   useEffect(() => {
     if (!wallet) {
       setIsInitialFetchDone(false);
       verifiedContractRef.current = null;
+      lastFetchTime.current = 0;
     }
   }, [wallet]);
 
   useEffect(() => {
     verifiedContractRef.current = null;
+    lastFetchTime.current = 0; // 切换地址时重置节流
   }, [activeAddress, activeChain.id]);
 
   /**
-   * 【逻辑：全量数据同步】
+   * 【逻辑：带节流的数据同步】
    */
-  const fetchData = async () => {
+  const fetchData = async (force: boolean = false) => {
     if (!wallet || !activeAddress) return;
+
+    const now = Date.now();
+    // 节流检查：如果不是强制刷新且在冷却时间内，直接跳过
+    if (!force && (now - lastFetchTime.current < FETCH_COOLDOWN)) {
+      console.log("Fetch skipped due to cooldown.");
+      return;
+    }
 
     setIsLoading(true);
     try {
+      lastFetchTime.current = now; // 更新最后同步时间
       const currentBalances: Record<string, string> = {};
 
       if (activeChain.chainType === 'TRON') {
         const host = activeChain.defaultRpcUrl;
         
-        // 1. 获取 TRX 余额
         const balSun = await TronService.getBalance(host, activeAddress);
         setBalance(ethers.formatUnits(balSun, 6)); 
 
-        // 2. 获取所有 TRC20 代币余额
         await Promise.all(activeChainTokens.map(async (token: TokenConfig) => {
           const bal = await TronService.getTRC20Balance(host, token.address, activeAddress);
           currentBalances[token.symbol] = ethers.formatUnits(bal, token.decimals);
@@ -66,7 +77,6 @@ export const useWalletData = ({
       } else {
         if (!provider) return;
         
-        // 1. 原生代币与账户基础信息任务
         const baseTasks: Promise<any>[] = [provider.getBalance(activeAddress)];
         let isContractVerified = true;
         
@@ -99,14 +109,12 @@ export const useWalletData = ({
           });
         }
 
-        // 2. 批量获取所有 ERC20 代币余额
         const tokenTasks = activeChainTokens.map(async (token: TokenConfig) => {
           try {
             const contract = new ethers.Contract(token.address, ERC20_ABI, provider);
             const bal = await contract.balanceOf(activeAddress);
             currentBalances[token.symbol] = ethers.formatUnits(bal, token.decimals);
           } catch (e) {
-            console.warn(`Failed to fetch balance for ${token.symbol}`, e);
             currentBalances[token.symbol] = '0.00';
           }
         });
