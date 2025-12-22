@@ -25,8 +25,8 @@ class DeduplicatingJsonRpcProvider extends ethers.JsonRpcProvider {
 
   async send(method: string, params: Array<any>): Promise<any> {
     // 只有查询类方法值得缓存
+    // 移除了 eth_chainId，因为 Chain ID 在配置中已固定
     const cacheableMethods = [
-      'eth_chainId', 
       'eth_gasPrice', 
       'eth_maxPriorityFeePerGas', 
       'eth_getBlockByNumber', 
