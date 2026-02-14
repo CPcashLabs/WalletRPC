@@ -34,4 +34,38 @@ describe('FeeService', () => {
     expect(a.gasPrice).toBe(1n);
     expect(b.gasPrice).toBe(4n);
   });
+
+  it('getFeeData 异常时返回默认 FeeData', async () => {
+    const provider = {
+      getFeeData: vi.fn(async () => {
+        throw new Error('rpc down');
+      })
+    } as unknown as ethers.JsonRpcProvider;
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const result = await FeeService.getOptimizedFeeData(provider, 9999);
+    expect(result.gasPrice).toBeNull();
+    expect(result.maxFeePerGas).toBeNull();
+    expect(result.maxPriorityFeePerGas).toBeNull();
+    expect(warnSpy).toHaveBeenCalled();
+  });
+
+  it('buildOverrides 优先使用 EIP-1559 并放大 fee', () => {
+    const feeData = new ethers.FeeData(10n, 200n, 50n);
+    const overrides = FeeService.buildOverrides(feeData, 21000n);
+
+    expect(overrides.gasLimit).toBe(21000n);
+    expect(overrides.maxFeePerGas).toBe(300n);
+    expect(overrides.maxPriorityFeePerGas).toBe(60n);
+    expect(overrides.gasPrice).toBeUndefined();
+  });
+
+  it('buildOverrides 在 legacy gasPrice 下回退并放大', () => {
+    const feeData = new ethers.FeeData(100n, null, null);
+    const overrides = FeeService.buildOverrides(feeData);
+
+    expect(overrides.gasPrice).toBe(130n);
+    expect(overrides.maxFeePerGas).toBeUndefined();
+    expect(overrides.maxPriorityFeePerGas).toBeUndefined();
+  });
 });

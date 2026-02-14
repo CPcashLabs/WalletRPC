@@ -2,6 +2,10 @@
 import { ethers } from 'ethers';
 import bs58 from 'bs58';
 
+const bytesToHex = (bytes: ArrayLike<number>): string => {
+  return `0x${Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')}`;
+};
+
 /**
  * 【设计亮点：轻量级协议桥接器 (Adapter Pattern)】
  * 
@@ -18,7 +22,8 @@ export const TronService = {
       
       const payload = bytes.slice(0, 21);
       const checksum = bytes.slice(21);
-      const hash = ethers.getBytes(ethers.sha256(ethers.getBytes(ethers.sha256(payload))));
+      const firstHash = ethers.sha256(bytesToHex(payload));
+      const hash = ethers.getBytes(ethers.sha256(firstHash));
       const expectedChecksum = hash.slice(0, 4);
       return checksum.every((val, i) => val === expectedChecksum[i]);
     } catch (e) { return false; }
@@ -192,14 +197,16 @@ export const TronService = {
     if (!base58Addr || base58Addr.startsWith("0x")) return base58Addr;
     try {
       const bytes = bs58.decode(base58Addr);
-      return ethers.hexlify(bytes.slice(0, -4)); 
+      if (bytes.length !== 25) return "";
+      return bytesToHex(bytes.slice(0, -4));
     } catch (e) { return ""; }
   },
 
   fromHexAddress: (hexAddr: string): string => {
     if (!hexAddr.startsWith("0x")) hexAddr = "0x" + hexAddr;
     const bytes = ethers.getBytes(hexAddr.substring(0, 4) === "0x41" ? hexAddr : "0x41" + hexAddr.substring(2));
-    const hash = ethers.getBytes(ethers.sha256(ethers.getBytes(ethers.sha256(bytes))));
+    const firstHash = ethers.sha256(bytesToHex(bytes));
+    const hash = ethers.getBytes(ethers.sha256(firstHash));
     const checksum = hash.slice(0, 4);
     const finalBytes = new Uint8Array(bytes.length + 4);
     finalBytes.set(bytes);
