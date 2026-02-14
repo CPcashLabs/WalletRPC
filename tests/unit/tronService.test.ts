@@ -32,6 +32,18 @@ describe('TronService', () => {
     );
   });
 
+  it('getBalance 会将 /jsonrpc 形式的 host 归一化为 REST base', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
+      json: async () => ({ balance: 1 })
+    } as Response);
+
+    await TronService.getBalance('https://nile.trongrid.io/jsonrpc', HEX_TRON_ADDR);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://nile.trongrid.io/wallet/getaccount',
+      expect.objectContaining({ method: 'POST' })
+    );
+  });
+
   it('getTRC20Balance 解析 constant_result 并返回 bigint', async () => {
     vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
       json: async () => ({ constant_result: ['00000000000000000000000000000000000000000000000000000000000003e8'] })

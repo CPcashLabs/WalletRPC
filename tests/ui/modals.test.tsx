@@ -52,6 +52,32 @@ describe('Modals UI', () => {
     expect(onSave).toHaveBeenCalledTimes(1);
   });
 
+  it('ChainModal 会拦截非 http(s) 的自定义 RPC URL', async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn();
+
+    wrap(
+      <ChainModal
+        isOpen={true}
+        onClose={vi.fn()}
+        initialConfig={chain}
+        chains={[chain]}
+        onSwitchNetwork={vi.fn()}
+        onSave={onSave}
+      />
+    );
+
+    const selects = screen.getAllByRole('combobox');
+    await user.selectOptions(selects[1], 'custom');
+    const rpcInput = screen.getByPlaceholderText('https://...');
+    await user.clear(rpcInput);
+    await user.type(rpcInput, 'ftp://invalid');
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent('http(s)');
+  });
+
   it('ChainModal 切换区块浏览器时链接应立即同步', async () => {
     const user = userEvent.setup();
     const chainWithExplorers: ChainConfig = {
