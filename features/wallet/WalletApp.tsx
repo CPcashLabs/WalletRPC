@@ -69,6 +69,9 @@ export const WalletApp: React.FC = () => {
   const [isOnboardingExiting, setIsOnboardingExiting] = React.useState(false);
   const [isIntroFadingOut, setIsIntroFadingOut] = React.useState(false);
   const [minTimePassed, setMinTimePassed] = React.useState(false);
+  const ONBOARDING_EXIT_MS = 250;
+  const INTRO_MIN_MS = 1200;
+  const INTRO_FADE_MS = 350;
 
   const onImportWrapper = async () => {
      const success = await handleImport();
@@ -78,17 +81,22 @@ export const WalletApp: React.FC = () => {
           return;
         }
         setIsOnboardingExiting(true);
-        setTimeout(() => { setView('intro_animation'); setIsOnboardingExiting(false); }, 1000);
+        setTimeout(() => { setView('intro_animation'); setIsOnboardingExiting(false); }, ONBOARDING_EXIT_MS);
      }
   };
 
-  React.useEffect(() => { if (view === 'intro_animation') { const timer = setTimeout(() => setMinTimePassed(true), 5000); return () => clearTimeout(timer); } }, [view]);
+  React.useEffect(() => {
+    if (view === 'intro_animation') {
+      const timer = setTimeout(() => setMinTimePassed(true), INTRO_MIN_MS);
+      return () => clearTimeout(timer);
+    }
+  }, [view, INTRO_MIN_MS]);
   React.useEffect(() => {
     if (view === 'intro_animation' && minTimePassed && isInitialFetchDone) {
       setIsIntroFadingOut(true);
-      setTimeout(() => { setView('dashboard'); setIsIntroFadingOut(false); setMinTimePassed(false); }, 1000);
+      setTimeout(() => { setView('dashboard'); setIsIntroFadingOut(false); setMinTimePassed(false); }, INTRO_FADE_MS);
     }
-  }, [view, minTimePassed, isInitialFetchDone, setView]);
+  }, [view, minTimePassed, isInitialFetchDone, setView, INTRO_FADE_MS]);
 
   const safePendingCount = React.useMemo(() => {
     if (!activeSafeAddress || safeDetails?.nonce == null) return 0;
