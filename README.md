@@ -47,6 +47,12 @@ It provides a unified frontend experience for key EVM/TRON wallet flows, with au
 ### Run all tests
 `npm run test:all`
 
+## Product Docs (Chinese)
+
+- Product documentation source of truth is under `/docs/product`.
+- It contains product goals, requirement specs, user stories, lifecycle policies, and maintenance templates.
+- Recommended entry file: `/docs/product/README.md`.
+
 ## Data Lifecycle And Refresh Policy
 
 - Passive data fetches are throttled by a cooldown window to avoid repeated identical requests during rapid UI transitions.
