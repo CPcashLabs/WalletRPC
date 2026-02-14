@@ -73,21 +73,35 @@ export const SendForm: React.FC<SendFormProps> = ({
     return balances[currentToken.address.toLowerCase()] ?? balances[currentToken.symbol] ?? '0';
   }, [balances, currentToken]);
 
+  const transferDecimals = useMemo(() => {
+    if (currentToken) return currentToken.decimals;
+    return activeChain.chainType === 'TRON' ? 6 : 18;
+  }, [currentToken, activeChain.chainType]);
+
   const isInsufficient = useMemo(() => {
-    const numAmount = parseFloat(amount || '0');
-    const numBalance = parseFloat(currentBalance);
-    if (!Number.isFinite(numAmount) || !Number.isFinite(numBalance)) return false;
-    return numAmount > numBalance;
-  }, [amount, currentBalance]);
+    const trimmedAmount = amount.trim();
+    if (!trimmedAmount) return false;
+    try {
+      const amountUnits = ethers.parseUnits(trimmedAmount, transferDecimals);
+      const balanceUnits = ethers.parseUnits(currentBalance || '0', transferDecimals);
+      return amountUnits > balanceUnits;
+    } catch {
+      return false;
+    }
+  }, [amount, currentBalance, transferDecimals]);
 
   const amountError = useMemo(() => {
     const trimmed = amount.trim();
     if (!trimmed) return null;
     if (!/^\d+(\.\d+)?$/.test(trimmed)) return t('tx.error_invalid_format');
-    const num = Number(trimmed);
-    if (!Number.isFinite(num) || num <= 0) return t('tx.error_invalid_format');
+    try {
+      const parsed = ethers.parseUnits(trimmed, transferDecimals);
+      if (parsed <= 0n) return t('tx.error_invalid_format');
+    } catch {
+      return t('tx.error_invalid_format');
+    }
     return null;
-  }, [amount, t]);
+  }, [amount, t, transferDecimals]);
 
   const availableDisplay = useMemo(() => {
     const n = Number.parseFloat(currentBalance);

@@ -38,7 +38,8 @@ export const ChainModal: React.FC<ChainModalProps> = ({
   }, [isOpen, initialConfig]);
 
   if (!isOpen) return null;
-  const activeExplorer = getActiveExplorer(initialConfig);
+  const resolvedConfig = { ...initialConfig, ...config } as ChainConfig;
+  const activeExplorer = getActiveExplorer(resolvedConfig);
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">

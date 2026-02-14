@@ -52,6 +52,42 @@ describe('Modals UI', () => {
     expect(onSave).toHaveBeenCalledTimes(1);
   });
 
+  it('ChainModal 切换区块浏览器时链接应立即同步', async () => {
+    const user = userEvent.setup();
+    const chainWithExplorers: ChainConfig = {
+      ...chain,
+      defaultExplorerKey: 'bttcscan',
+      explorers: [
+        ...chain.explorers,
+        {
+          name: 'AltScan',
+          key: 'altscan',
+          url: 'https://alt.example',
+          txPath: 'https://alt.example/tx/{txid}',
+          addressPath: 'https://alt.example/address/{address}'
+        }
+      ]
+    };
+
+    wrap(
+      <ChainModal
+        isOpen={true}
+        onClose={vi.fn()}
+        initialConfig={chainWithExplorers}
+        chains={[chainWithExplorers]}
+        onSwitchNetwork={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    const websiteLink = screen.getByRole('link', { name: /Open Website/i });
+    expect(websiteLink).toHaveAttribute('href', 'https://bttcscan.com');
+
+    const selects = screen.getAllByRole('combobox');
+    await user.selectOptions(selects[2], 'altscan');
+    expect(websiteLink).toHaveAttribute('href', 'https://alt.example');
+  });
+
   it('AddTokenModal 可输入地址并触发导入', async () => {
     const user = userEvent.setup();
     const onImport = vi.fn();
@@ -86,4 +122,3 @@ describe('Modals UI', () => {
     expect(onDelete).toHaveBeenCalledWith('0x00000000000000000000000000000000000000ab');
   });
 });
-

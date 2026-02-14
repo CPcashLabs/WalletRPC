@@ -22,6 +22,18 @@ class DeduplicatingJsonRpcProvider extends ethers.JsonRpcProvider {
   private _resCache = new Map<string, { result: any, expiry: number }>();
   
   private readonly CACHE_TTL = 2000; // 2秒缓存生命周期
+  private readonly MAX_CACHE_SIZE = 200;
+
+  private cleanupCache(now: number) {
+    for (const [key, value] of this._resCache) {
+      if (value.expiry <= now) this._resCache.delete(key);
+    }
+    while (this._resCache.size > this.MAX_CACHE_SIZE) {
+      const first = this._resCache.keys().next();
+      if (first.done) break;
+      this._resCache.delete(first.value);
+    }
+  }
 
   async send(method: string, params: Array<any>): Promise<any> {
     // 只有查询类方法值得缓存
@@ -41,6 +53,7 @@ class DeduplicatingJsonRpcProvider extends ethers.JsonRpcProvider {
 
     const key = `${method}:${JSON.stringify(params)}`;
     const now = Date.now();
+    this.cleanupCache(now);
 
     // 1. 检查结果缓存 (解决 ID 不同但内容相同的重复请求)
     const cached = this._resCache.get(key);
@@ -61,6 +74,7 @@ class DeduplicatingJsonRpcProvider extends ethers.JsonRpcProvider {
         result, 
         expiry: Date.now() + this.CACHE_TTL 
       });
+      this.cleanupCache(Date.now());
       return result;
     }).finally(() => {
       // 释放并发锁定

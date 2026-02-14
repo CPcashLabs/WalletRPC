@@ -3,11 +3,29 @@ import React, { useState, useRef } from 'react';
 import { ethers } from 'ethers';
 import { SAFE_ABI, PROXY_FACTORY_ABI, ZERO_ADDRESS, SENTINEL_OWNERS, getSafeConfig, ERC20_ABI } from '../config';
 import { FeeService } from '../../../services/feeService';
-import { SafePendingTx } from '../types';
+import { ChainConfig, SafeDetails, SafePendingTx, TrackedSafe, TransactionRecord } from '../types';
 
 /**
  * 【多签中枢管理器 - RPC 优化增强版】
  */
+interface UseSafeManagerParams {
+  wallet: ethers.Wallet | ethers.HDNodeWallet | null;
+  activeSafeAddress: string | null;
+  activeChainId: number;
+  activeChain: ChainConfig;
+  provider: ethers.JsonRpcProvider | null;
+  safeDetails: SafeDetails | null;
+  setPendingSafeTxs: React.Dispatch<React.SetStateAction<SafePendingTx[]>>;
+  setTrackedSafes: React.Dispatch<React.SetStateAction<TrackedSafe[]>>;
+  setActiveAccountType: (accountType: 'EOA' | 'SAFE') => void;
+  setActiveSafeAddress: (address: string | null) => void;
+  setView: (view: string) => void;
+  setNotification: (message: string | null) => void;
+  setError: (message: string | null) => void;
+  syncNonce: () => void | Promise<void>;
+  addTransactionRecord: (record: TransactionRecord) => void;
+}
+
 export const useSafeManager = ({
   wallet,
   activeSafeAddress,
@@ -24,7 +42,7 @@ export const useSafeManager = ({
   setError,
   syncNonce,
   addTransactionRecord
-}: any) => {
+}: UseSafeManagerParams) => {
 
   const [isDeployingSafe, setIsDeployingSafe] = useState(false);
   const isProposingRef = useRef(false);

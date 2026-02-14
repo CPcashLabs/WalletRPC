@@ -14,6 +14,27 @@ export interface ProcessResult {
   isTimeout?: boolean;
 }
 
+interface TransactionInput {
+  recipient: string;
+  amount: string;
+  asset: string;
+  assetAddress?: string;
+  assetDecimals?: number;
+  customData?: string;
+}
+
+interface UseTransactionManagerParams {
+  wallet: ethers.Wallet | ethers.HDNodeWallet | null;
+  tronPrivateKey: string | null;
+  provider: ethers.JsonRpcProvider | null;
+  activeChain: ChainConfig;
+  activeChainId: number;
+  activeAccountType: 'EOA' | 'SAFE';
+  fetchData: () => void | Promise<void>;
+  setError: (message: string | null) => void;
+  handleSafeProposal?: (to: string, value: bigint, data: string, summary: string) => Promise<boolean>;
+}
+
 /**
  * 【交易生命周期管理器 - 高效 RPC 架构版】
  * 
@@ -29,7 +50,7 @@ export const useTransactionManager = ({
   fetchData,
   setError,
   handleSafeProposal
-}: any) => {
+}: UseTransactionManagerParams) => {
 
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   
@@ -135,7 +156,7 @@ export const useTransactionManager = ({
   /**
    * 处理各种交易类型的提议与发送
    */
-  const handleSendSubmit = async (data: any): Promise<ProcessResult> => {
+  const handleSendSubmit = async (data: TransactionInput): Promise<ProcessResult> => {
     try {
       const isTron = activeChain.chainType === 'TRON';
       if (!wallet || (!provider && !isTron)) throw new Error("Wallet/Provider not ready");
@@ -225,8 +246,9 @@ export const useTransactionManager = ({
       setTransactions(prev => [{ id, chainId: Number(activeChainId), hash: tx.hash, status: 'submitted', timestamp: Date.now(), summary: `Send ${data.amount} ${displaySymbol}` }, ...prev]);
 
       return { success: true, hash: tx.hash };
-    } catch (e: any) {
-      const errorMsg = e?.message || "";
+    } catch (e: unknown) {
+      const err = e as { message?: string };
+      const errorMsg = err?.message || "";
       // 自愈逻辑：如果发生 Nonce 冲突，清空镜像，下次强制从网络获取
       if (errorMsg.includes("nonce") || errorMsg.includes("replacement transaction")) {
         localNonceRef.current = null;

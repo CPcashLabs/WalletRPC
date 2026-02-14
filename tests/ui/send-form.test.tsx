@@ -83,4 +83,32 @@ describe('SendForm UI', () => {
     expect(payload.assetAddress.toLowerCase()).toBe(chain.tokens[0].address.toLowerCase());
     expect(payload.assetDecimals).toBe(6);
   });
+
+  it('高精度大数余额比较应正确识别不足额', async () => {
+    const user = userEvent.setup();
+
+    renderWithProvider(
+      <SendForm
+        activeChain={chain}
+        tokens={chain.tokens}
+        balances={{
+          NATIVE: '1.00',
+          [chain.tokens[0].address.toLowerCase()]: '9007199254740992.000000'
+        }}
+        activeAccountType="EOA"
+        recommendedNonce={0}
+        onSend={vi.fn(async () => ({ success: true }))}
+        onBack={vi.fn()}
+        onRefresh={vi.fn()}
+        isLoading={false}
+        transactions={txs}
+      />
+    );
+
+    await user.type(screen.getByPlaceholderText('0x...'), '0x000000000000000000000000000000000000dEaD');
+    await user.selectOptions(screen.getByRole('combobox'), chain.tokens[0].address.toLowerCase());
+    await user.type(screen.getByPlaceholderText('0.0'), '9007199254740992.000001');
+
+    expect(screen.getByRole('button', { name: 'Liquidity Shortfall' })).toBeVisible();
+  });
 });

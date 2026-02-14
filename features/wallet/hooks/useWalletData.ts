@@ -8,6 +8,17 @@ import { SafeDetails, ChainConfig, TokenConfig } from '../types';
 /**
  * 【数据抓取引擎 - 高可靠同步版】
  */
+interface UseWalletDataParams {
+  wallet: ethers.Wallet | ethers.HDNodeWallet | null;
+  activeAddress: string | null;
+  activeChain: ChainConfig;
+  activeAccountType: 'EOA' | 'SAFE';
+  activeChainTokens: TokenConfig[];
+  provider: ethers.JsonRpcProvider | null;
+  setIsLoading: (isLoading: boolean) => void;
+  setError: (message: string | null) => void;
+}
+
 export const useWalletData = ({
   wallet,
   activeAddress,
@@ -17,7 +28,7 @@ export const useWalletData = ({
   provider,
   setIsLoading,
   setError
-}: any) => {
+}: UseWalletDataParams) => {
   
   const [balance, setBalance] = useState<string>('0.00');
   const [tokenBalances, setTokenBalances] = useState<Record<string, string>>({});
@@ -154,7 +165,7 @@ export const useWalletData = ({
 
         setTokenBalances(currentBalances);
       }
-    } catch (e: any) {
+    } catch {
       setError("Data synchronization fault");
     } finally {
       if (requestId === requestIdRef.current) {

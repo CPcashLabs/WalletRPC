@@ -2,7 +2,7 @@
 import React from 'react';
 import { ShieldCheck, ArrowRight, Hexagon, Lock, Zap, Globe } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
-import { useTranslation, Language } from '../../../contexts/LanguageContext';
+import { useTranslation } from '../../../contexts/LanguageContext';
 import { BrandLogo } from '../../../components/ui/BrandLogo';
 
 /**
@@ -10,7 +10,15 @@ import { BrandLogo } from '../../../components/ui/BrandLogo';
  * 目的：允许用户在入驻页面直接手动切换语言，而无需进入深层设置。
  * 解决了什么：新用户如果看不懂默认语言，直接在首页就能调整。
  */
-export const WalletOnboarding: React.FC<any> = ({ input, setInput, onImport, error, isExiting = false }) => {
+interface WalletOnboardingProps {
+  input: string;
+  setInput: (value: string) => void;
+  onImport: () => void | Promise<void>;
+  error: string | null;
+  isExiting?: boolean;
+}
+
+export const WalletOnboarding: React.FC<WalletOnboardingProps> = ({ input, setInput, onImport, error, isExiting = false }) => {
   const { t, language, setLanguage } = useTranslation();
   
   return (
