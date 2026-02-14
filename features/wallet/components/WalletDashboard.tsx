@@ -97,7 +97,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
               </div>
             </div>
             <div className="flex gap-2">
-              <button onClick={onRefresh} className="p-2.5 bg-slate-50 hover:bg-slate-100 text-slate-400 rounded-xl transition-all border border-slate-100">
+              <button aria-label="refresh-balance" onClick={onRefresh} className="p-2.5 bg-slate-50 hover:bg-slate-100 text-slate-400 rounded-xl transition-all border border-slate-100">
                 <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin text-[#0062ff]' : ''}`} />
               </button>
             </div>

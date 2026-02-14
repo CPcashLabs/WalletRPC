@@ -70,7 +70,7 @@ describe('WalletDashboard UI', () => {
       />
     );
 
-    await user.click(screen.getAllByRole('button')[0]);
+    await user.click(screen.getByRole('button', { name: 'refresh-balance' }));
     await user.click(screen.getByRole('button', { name: 'SEND' }));
     expect(onRefresh).toHaveBeenCalledTimes(1);
     expect(onSend).toHaveBeenCalledTimes(1);
