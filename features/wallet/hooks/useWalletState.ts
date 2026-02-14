@@ -68,6 +68,7 @@ export const useWalletState = (initialChainId: number) => {
       setWallet(newWallet);
       setTronPrivateKey(newTronPK);
       setTronWalletAddress(derivedTronAddr);
+      setPrivateKeyOrPhrase('');
       
       return true;
     } catch (e) {

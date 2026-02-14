@@ -164,6 +164,24 @@ export const useEvmWallet = () => {
   }, [safeMgr?.handleSafeProposal]);
 
   useEffect(() => {
+    if (activeAccountType !== 'SAFE' || !activeSafeAddress || safeDetails?.nonce == null) {
+      return;
+    }
+    const safeLower = activeSafeAddress.toLowerCase();
+    setPendingSafeTxs((prev) => {
+      const next = prev.filter(
+        (tx) =>
+          !(
+            tx.chainId === Number(activeChainId) &&
+            tx.safeAddress.toLowerCase() === safeLower &&
+            tx.nonce < safeDetails.nonce
+          )
+      );
+      return next.length === prev.length ? prev : next;
+    });
+  }, [activeAccountType, activeSafeAddress, activeChainId, safeDetails?.nonce, setPendingSafeTxs]);
+
+  useEffect(() => {
     const isCoreView = view === 'intro_animation' || view === 'dashboard';
     if (wallet && isCoreView) {
       fetchData(false);
@@ -179,7 +197,16 @@ export const useEvmWallet = () => {
 
   const handleTrackSafe = (address: string) => {
     const name = `Safe_${address.slice(2, 6)}`;
-    setTrackedSafes(prev => [...prev, { address, name, chainId: activeChainId }]);
+    const normalizedAddress = address.toLowerCase();
+    setTrackedSafes((prev) => {
+      const exists = prev.some(
+        (safe) =>
+          safe.chainId === activeChainId &&
+          safe.address.toLowerCase() === normalizedAddress
+      );
+      if (exists) return prev;
+      return [...prev, { address, name, chainId: activeChainId }];
+    });
     setActiveSafeAddress(address);
     setActiveAccountType('SAFE');
     setView('dashboard');

@@ -16,6 +16,17 @@ export const useWalletStorage = () => {
   const [customTokens, setCustomTokens] = useState<Record<number, TokenConfig[]>>({});
   const [pendingSafeTxs, setPendingSafeTxs] = useState<SafePendingTx[]>([]);
 
+  const parseStorageItem = <T,>(key: string, fallback: T): T => {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    try {
+      return JSON.parse(raw) as T;
+    } catch (error) {
+      console.warn(`Storage parse failed for key: ${key}`, error);
+      return fallback;
+    }
+  };
+
   /**
    * 【逻辑：智能配置合并 (Smart Config Merging)】
    * 为什么：当开发者更新了 DEFAULT_CHAINS（例如增加了新代币），不能直接被用户的旧存储覆盖。
@@ -25,44 +36,45 @@ export const useWalletStorage = () => {
    * 好处：用户既能保留自定义设置，又能自动获得开发者新添加的代币或浏览器链接。
    */
   useEffect(() => {
-    try {
-      const savedSafes = localStorage.getItem('zerostate_tracked_safes');
-      if (savedSafes) setTrackedSafes(JSON.parse(savedSafes));
+    const savedSafes = parseStorageItem<unknown>('zerostate_tracked_safes', []);
+    if (Array.isArray(savedSafes) && savedSafes.length > 0) {
+      setTrackedSafes(savedSafes as TrackedSafe[]);
+    }
 
-      const savedChains = localStorage.getItem('zerostate_custom_chains');
-      if (savedChains) {
-         const customChainConfigs: ChainConfig[] = JSON.parse(savedChains);
-         
-         const mergedChains = DEFAULT_CHAINS.map(defaultChain => {
-            const override = customChainConfigs.find(c => c.id === defaultChain.id);
-            if (override) {
-               return { 
-                  ...defaultChain, 
-                  ...override, 
-                  // 强制使用最新的静态 explorers 列表，防止 storage 中存的旧数据覆盖了新版本。
-                  explorers: defaultChain.explorers, 
-                  isCustom: true 
-               };
-            }
-            return defaultChain;
-         });
+    const customChainConfigsRaw = parseStorageItem<unknown>('zerostate_custom_chains', []);
+    const customChainConfigs = Array.isArray(customChainConfigsRaw)
+      ? (customChainConfigsRaw as ChainConfig[])
+      : [];
+    if (customChainConfigs.length > 0) {
+      const mergedChains = DEFAULT_CHAINS.map((defaultChain) => {
+        const override = customChainConfigs.find((chain) => chain.id === defaultChain.id);
+        if (override) {
+          return {
+            ...defaultChain,
+            ...override,
+            explorers: defaultChain.explorers,
+            isCustom: true
+          };
+        }
+        return defaultChain;
+      });
 
-         // 补全：用户完全新增的链 (代码里没有的)
-         customChainConfigs.forEach(customChain => {
-            if (!mergedChains.find(c => c.id === customChain.id)) {
-               mergedChains.push(customChain);
-            }
-         });
-         setChains(mergedChains);
-      }
+      customChainConfigs.forEach((customChain) => {
+        if (!mergedChains.find((chain) => chain.id === customChain.id)) {
+          mergedChains.push(customChain);
+        }
+      });
+      setChains(mergedChains);
+    }
 
-      const savedTokens = localStorage.getItem('zerostate_custom_tokens');
-      if (savedTokens) setCustomTokens(JSON.parse(savedTokens));
+    const savedTokens = parseStorageItem<unknown>('zerostate_custom_tokens', {});
+    if (savedTokens && typeof savedTokens === 'object' && Object.keys(savedTokens).length > 0) {
+      setCustomTokens(savedTokens as Record<number, TokenConfig[]>);
+    }
 
-      const savedSafeTxs = localStorage.getItem('zerostate_pending_safe_txs');
-      if (savedSafeTxs) setPendingSafeTxs(JSON.parse(savedSafeTxs));
-    } catch (e) {
-      console.warn("Storage recovery failed", e);
+    const savedSafeTxs = parseStorageItem<unknown>('zerostate_pending_safe_txs', []);
+    if (Array.isArray(savedSafeTxs) && savedSafeTxs.length > 0) {
+      setPendingSafeTxs(savedSafeTxs as SafePendingTx[]);
     }
   }, []);
 

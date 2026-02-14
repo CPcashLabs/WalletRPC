@@ -14,6 +14,16 @@ export interface ProcessResult {
   isTimeout?: boolean;
 }
 
+const RECEIPT_POLL_INTERVAL_MS = 5000;
+const RECEIPT_POLL_TIMEOUT_MS = 10 * 60 * 1000;
+const RECEIPT_POLL_MAX_ATTEMPTS = 60;
+
+const getNextPollDelay = (attempts: number): number => {
+  if (attempts < 6) return 5000;
+  if (attempts < 18) return 15000;
+  return 30000;
+};
+
 interface TransactionInput {
   recipient: string;
   amount: string;
@@ -54,6 +64,7 @@ export const useTransactionManager = ({
 
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const postConfirmRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollingMetaRef = useRef<Map<string, { startedAt: number; attempts: number; nextPollAt: number }>>(new Map());
   
   /**
    * 【RPC 优化：Nonce 内存镜像 (Nonce Mirroring)】
@@ -83,7 +94,6 @@ export const useTransactionManager = ({
       // [RPC] 此时发起 1 次 eth_getTransactionCount
       const n = await provider.getTransactionCount(wallet.address, 'pending');
       localNonceRef.current = n;
-      console.log(`[RPC DEDUPLICATION] Nonce synced: ${n}`);
     } catch (e) {
       console.error("Nonce sync failed", e);
     } finally {
@@ -105,8 +115,22 @@ export const useTransactionManager = ({
         clearTimeout(postConfirmRefreshTimerRef.current);
         postConfirmRefreshTimerRef.current = null;
       }
+      pollingMetaRef.current.clear();
     };
   }, []);
+
+  useEffect(() => {
+    const activeSubmitted = new Set(
+      transactions
+        .filter((tx) => tx.status === 'submitted')
+        .map((tx) => tx.id)
+    );
+    for (const txId of pollingMetaRef.current.keys()) {
+      if (!activeSubmitted.has(txId)) {
+        pollingMetaRef.current.delete(txId);
+      }
+    }
+  }, [transactions]);
 
   /**
    * 【RPC 优化：定向收据轮询 (Targeted Receipt Polling)】
@@ -118,58 +142,130 @@ export const useTransactionManager = ({
   useEffect(() => {
     const currentId = Number(activeChainId);
     const hasPending = transactions.some(
-      (t) => t.status === 'submitted' && Number(t.chainId) === currentId && !!t.hash
+      (tx) => tx.status === 'submitted' && Number(tx.chainId) === currentId && !!tx.hash
     );
     if (!hasPending) return;
-    
+
     const interval = setInterval(async () => {
-      const pending = transactions.filter(t => 
-        t.status === 'submitted' && 
-        Number(t.chainId) === currentId &&
-        t.hash
+      const now = Date.now();
+      const pending = transactions.filter(
+        (tx) =>
+          tx.status === 'submitted' &&
+          Number(tx.chainId) === currentId &&
+          !!tx.hash
       );
-      
+
       if (pending.length === 0) return;
 
-      if (activeChain.chainType === 'TRON') {
-        const updates = await Promise.all(pending.map(async (tx) => {
-          if (!tx.hash) return null;
-          try {
-            const info = await TronService.getTransactionInfo(activeChain.defaultRpcUrl, tx.hash);
-            if (!info.found) return null;
-            const status = info.success === false ? 'failed' : 'confirmed';
-            return { id: tx.id, status };
-          } catch (e) { return null; }
-        }));
-        const validUpdates = updates.filter((u): u is { id: string; status: 'confirmed' | 'failed' } => !!u);
-        if (validUpdates.length > 0) {
-          const updateMap = new Map(validUpdates.map(u => [u.id, u.status]));
-          setTransactions(prev => prev.map(t => updateMap.has(t.id) ? { ...t, status: updateMap.get(t.id)! } : t));
-          if (validUpdates.some(u => u.status === 'confirmed')) schedulePostConfirmRefresh();
+      const dueToPoll: TransactionRecord[] = [];
+      const timeoutIds: string[] = [];
+
+      for (const tx of pending) {
+        const meta =
+          pollingMetaRef.current.get(tx.id) ??
+          { startedAt: tx.timestamp, attempts: 0, nextPollAt: 0 };
+
+        if (!pollingMetaRef.current.has(tx.id)) {
+          pollingMetaRef.current.set(tx.id, meta);
         }
-        return;
+
+        const elapsed = now - meta.startedAt;
+        if (elapsed >= RECEIPT_POLL_TIMEOUT_MS || meta.attempts >= RECEIPT_POLL_MAX_ATTEMPTS) {
+          timeoutIds.push(tx.id);
+          pollingMetaRef.current.delete(tx.id);
+          continue;
+        }
+
+        if (now >= meta.nextPollAt) {
+          dueToPoll.push(tx);
+        }
       }
 
-      if (!provider) return;
-
-      const updates = await Promise.all(pending.map(async (tx) => {
-        if (!tx.hash) return null;
-        try {
-          const normalizedHash = normalizeHex(tx.hash);
-          // [RPC] 仅查询收据，不查询整笔交易详情，包体更小，解析更快
-          const receipt = await provider.getTransactionReceipt(normalizedHash);
-          if (!receipt) return null;
-          return { id: tx.id, status: receipt.status === 1 ? 'confirmed' as const : 'failed' as const };
-        } catch (e) { return null; }
-      }));
-      const validUpdates = updates.filter((u): u is { id: string; status: 'confirmed' | 'failed' } => !!u);
-      if (validUpdates.length > 0) {
-        const updateMap = new Map(validUpdates.map(u => [u.id, u.status]));
-        setTransactions(prev => prev.map(t => updateMap.has(t.id) ? { ...t, status: updateMap.get(t.id)! } : t));
-        // 只有成功包含后，才触发余额刷新（减少过程中的重复余额查询）
-        if (validUpdates.some(u => u.status === 'confirmed')) schedulePostConfirmRefresh();
+      if (timeoutIds.length > 0) {
+        const timeoutSet = new Set(timeoutIds);
+        setTransactions((prev) =>
+          prev.map((tx) =>
+            timeoutSet.has(tx.id)
+              ? { ...tx, status: 'failed', error: 'Transaction confirmation timeout' }
+              : tx
+          )
+        );
       }
-    }, 5000);
+
+      if (dueToPoll.length === 0) return;
+
+      let validUpdates: Array<{ id: string; status: 'confirmed' | 'failed' }> = [];
+
+      if (activeChain.chainType === 'TRON') {
+        const updates = await Promise.all(
+          dueToPoll.map(async (tx) => {
+            if (!tx.hash) return null;
+            try {
+              const info = await TronService.getTransactionInfo(activeChain.defaultRpcUrl, tx.hash);
+              if (!info.found) return null;
+              const status = info.success === false ? 'failed' : 'confirmed';
+              return { id: tx.id, status } as const;
+            } catch {
+              return null;
+            }
+          })
+        );
+        validUpdates = updates.filter(
+          (item): item is { id: string; status: 'confirmed' | 'failed' } => !!item
+        );
+      } else {
+        if (!provider) return;
+        const updates = await Promise.all(
+          dueToPoll.map(async (tx) => {
+            if (!tx.hash) return null;
+            try {
+              const normalizedHash = normalizeHex(tx.hash);
+              const receipt = await provider.getTransactionReceipt(normalizedHash);
+              if (!receipt) return null;
+              return {
+                id: tx.id,
+                status: receipt.status === 1 ? 'confirmed' : 'failed'
+              } as const;
+            } catch {
+              return null;
+            }
+          })
+        );
+        validUpdates = updates.filter(
+          (item): item is { id: string; status: 'confirmed' | 'failed' } => !!item
+        );
+      }
+
+      const resolvedSet = new Set(validUpdates.map((item) => item.id));
+      for (const tx of dueToPoll) {
+        if (resolvedSet.has(tx.id)) {
+          pollingMetaRef.current.delete(tx.id);
+          continue;
+        }
+        const meta = pollingMetaRef.current.get(tx.id);
+        if (!meta) continue;
+        const nextAttempts = meta.attempts + 1;
+        pollingMetaRef.current.set(tx.id, {
+          ...meta,
+          attempts: nextAttempts,
+          nextPollAt: Date.now() + getNextPollDelay(nextAttempts)
+        });
+      }
+
+      if (validUpdates.length === 0) return;
+
+      const updateMap = new Map(validUpdates.map((item) => [item.id, item.status]));
+      setTransactions((prev) =>
+        prev.map((tx) =>
+          updateMap.has(tx.id)
+            ? { ...tx, status: updateMap.get(tx.id)!, error: undefined }
+            : tx
+        )
+      );
+      if (validUpdates.some((item) => item.status === 'confirmed')) {
+        schedulePostConfirmRefresh();
+      }
+    }, RECEIPT_POLL_INTERVAL_MS);
 
     return () => clearInterval(interval);
   }, [provider, transactions, activeChain, activeChainId, schedulePostConfirmRefresh]);
@@ -287,6 +383,7 @@ export const useTransactionManager = ({
   const clearTransactions = () => {
     setTransactions([]);
     localNonceRef.current = null;
+    pollingMetaRef.current.clear();
   };
 
   return { transactions, localNonceRef, handleSendSubmit, syncNonce, addTransactionRecord, clearTransactions };

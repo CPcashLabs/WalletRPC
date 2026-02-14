@@ -125,10 +125,6 @@ export const SendForm: React.FC<SendFormProps> = ({
   }, [recipient, activeChain.chainType, t]);
 
   useEffect(() => {
-    if (onRefresh) onRefresh();
-  }, []);
-
-  useEffect(() => {
     if (!isInsufficient) setHasAcknowledgedBalance(false);
   }, [isInsufficient]);
 
