@@ -129,13 +129,24 @@ export const useSafeManager = ({
 
       const tx = await factory.createProxyWithNonce(config.singleton, initializer, saltNonce, overrides);
       addTransactionRecord({ id: Date.now().toString(), chainId: activeChainId, hash: tx.hash, status: 'submitted', timestamp: Date.now(), summary: "Deploying Safe Vault" });
+      setNotification("Safe deployment submitted");
 
       if (predictedAddress) {
-        setTrackedSafes((prev: any) => [...prev, { address: predictedAddress, name: `Safe_${predictedAddress.slice(2, 6)}`, chainId: activeChainId }]);
-        setActiveSafeAddress(predictedAddress);
-        setActiveAccountType('SAFE');
-        setView('dashboard');
-        setNotification("Safe deployed successfully (Address Predicted)");
+        tx.wait()
+          .then(() => {
+            setTrackedSafes((prev: any) => {
+              const exists = prev.some((s: any) => s.address.toLowerCase() === predictedAddress.toLowerCase() && s.chainId === activeChainId);
+              if (exists) return prev;
+              return [...prev, { address: predictedAddress, name: `Safe_${predictedAddress.slice(2, 6)}`, chainId: activeChainId }];
+            });
+            setActiveSafeAddress(predictedAddress);
+            setActiveAccountType('SAFE');
+            setView('dashboard');
+            setNotification("Safe deployed successfully");
+          })
+          .catch((err: any) => {
+            setError(err?.message || "Safe deployment failed after submission");
+          });
       }
     } catch (e: any) {
       setError(e.message || "Deployment failed");

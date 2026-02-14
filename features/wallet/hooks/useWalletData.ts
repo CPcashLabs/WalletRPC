@@ -145,8 +145,9 @@ export const useWalletData = ({
             currentBalances[token.address.toLowerCase()] = v;
             if (!(token.symbol in currentBalances)) currentBalances[token.symbol] = v;
           } catch (e) {
-            currentBalances[token.address.toLowerCase()] = '0.00';
-            if (!(token.symbol in currentBalances)) currentBalances[token.symbol] = '0.00';
+            // Keep last-known values on transient RPC errors to avoid false zero balances.
+            currentBalances[token.address.toLowerCase()] = tokenBalances[token.address.toLowerCase()] ?? '0.00';
+            if (!(token.symbol in currentBalances)) currentBalances[token.symbol] = tokenBalances[token.symbol] ?? '0.00';
           }
         }));
         if (requestId !== requestIdRef.current) return;
