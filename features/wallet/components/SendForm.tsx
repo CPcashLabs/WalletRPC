@@ -14,6 +14,8 @@ export interface SendFormData {
   recipient: string;
   amount: string;
   asset: string;
+  assetAddress?: string;
+  assetDecimals?: number;
   customData: string;
   gasPrice: string;
   gasLimit: string;
@@ -49,7 +51,7 @@ export const SendForm: React.FC<SendFormProps> = ({
   const { t } = useTranslation();
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
-  const [selectedAsset, setSelectedAsset] = useState('NATIVE');
+  const [selectedAssetKey, setSelectedAssetKey] = useState('NATIVE');
   const [customData, setCustomData] = useState('0x');
   const [gasPrice, setGasPrice] = useState('');
   const [gasLimit, setGasLimit] = useState('');
@@ -61,15 +63,36 @@ export const SendForm: React.FC<SendFormProps> = ({
   const [txHash, setTxHash] = useState<string | undefined>();
   const [errorMsg, setErrorMsg] = useState<string | undefined>();
 
+  const currentToken = useMemo(() => {
+    if (selectedAssetKey === 'NATIVE') return null;
+    return tokens.find(tk => tk.address.toLowerCase() === selectedAssetKey.toLowerCase()) || null;
+  }, [tokens, selectedAssetKey]);
+
   const currentBalance = useMemo(() => {
-    return balances[selectedAsset] || '0';
-  }, [balances, selectedAsset]);
+    if (!currentToken) return balances['NATIVE'] || '0';
+    return balances[currentToken.address.toLowerCase()] ?? balances[currentToken.symbol] ?? '0';
+  }, [balances, currentToken]);
 
   const isInsufficient = useMemo(() => {
     const numAmount = parseFloat(amount || '0');
     const numBalance = parseFloat(currentBalance);
+    if (!Number.isFinite(numAmount) || !Number.isFinite(numBalance)) return false;
     return numAmount > numBalance;
   }, [amount, currentBalance]);
+
+  const amountError = useMemo(() => {
+    const trimmed = amount.trim();
+    if (!trimmed) return null;
+    if (!/^\d+(\.\d+)?$/.test(trimmed)) return t('tx.error_invalid_format');
+    const num = Number(trimmed);
+    if (!Number.isFinite(num) || num <= 0) return t('tx.error_invalid_format');
+    return null;
+  }, [amount, t]);
+
+  const availableDisplay = useMemo(() => {
+    const n = Number.parseFloat(currentBalance);
+    return Number.isFinite(n) ? n.toFixed(4) : '0.0000';
+  }, [currentBalance]);
 
   const recipientError = useMemo(() => {
     const addr = recipient.trim();
@@ -103,7 +126,7 @@ export const SendForm: React.FC<SendFormProps> = ({
   }, [transactions, txHash, transferStatus]);
 
   const handleSend = async () => {
-    if (recipientError || !recipient.trim()) return;
+    if (recipientError || amountError || !recipient.trim() || !amount.trim()) return;
     if (isInsufficient && !hasAcknowledgedBalance) {
       setHasAcknowledgedBalance(true);
       return;
@@ -116,7 +139,9 @@ export const SendForm: React.FC<SendFormProps> = ({
     const result = await onSend({
       recipient,
       amount,
-      asset: selectedAsset,
+      asset: currentToken ? currentToken.symbol : 'NATIVE',
+      assetAddress: currentToken?.address,
+      assetDecimals: currentToken?.decimals,
       customData,
       gasPrice,
       gasLimit,
@@ -171,7 +196,7 @@ export const SendForm: React.FC<SendFormProps> = ({
               <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">{t('settings.currency')}</label>
               <div className="flex items-center space-x-2">
                 <span className="text-[11px] font-bold text-slate-400 uppercase">
-                  {t('common.available')}: <span className="text-[#0062ff]">{parseFloat(currentBalance).toFixed(4)}</span>
+                  {t('common.available')}: <span className="text-[#0062ff]">{availableDisplay}</span>
                 </span>
                 <button 
                   onClick={() => onRefresh && onRefresh()} 
@@ -185,11 +210,11 @@ export const SendForm: React.FC<SendFormProps> = ({
             <div className="relative">
               <select 
                 className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-[#0062ff]/40 transition-all appearance-none font-bold text-slate-700"
-                value={selectedAsset} 
-                onChange={e => setSelectedAsset(e.target.value)}
+                value={selectedAssetKey} 
+                onChange={e => setSelectedAssetKey(e.target.value)}
               >
                 <option value="NATIVE">{activeChain.currencySymbol} ({t('common.native_label')})</option>
-                {tokens.map(t_opt => <option key={t_opt.symbol} value={t_opt.symbol}>{t_opt.symbol} - {t_opt.name}</option>)}
+                {tokens.map(t_opt => <option key={t_opt.address} value={t_opt.address.toLowerCase()}>{t_opt.symbol} - {t_opt.name}</option>)}
               </select>
               <div className="absolute left-3 top-3.5 text-slate-400 pointer-events-none">
                  <Coins className="w-5 h-5" />
@@ -215,6 +240,7 @@ export const SendForm: React.FC<SendFormProps> = ({
           
           <div>
             <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5 tracking-wider">{t('tx.amount')}</label>
+            {amountError && <div className="text-[10px] text-red-500 font-black uppercase tracking-tight mb-1">{amountError}</div>}
             <div className="relative">
               <input 
                 className={`w-full pl-4 pr-16 py-3 border rounded-xl transition-all font-mono text-lg font-bold shadow-inner ${isInsufficient ? 'bg-amber-50 border-amber-200 text-amber-700 focus:ring-amber-100' : 'bg-slate-50 border-slate-200 text-slate-800 focus:ring-blue-100 focus:border-[#0062ff]/40'}`}
@@ -250,7 +276,7 @@ export const SendForm: React.FC<SendFormProps> = ({
               onClick={handleSend} 
               variant={hasAcknowledgedBalance ? 'danger' : (isInsufficient ? 'outline' : 'primary')}
               className={`w-full py-4 text-sm font-black transition-all ${(isInsufficient && !hasAcknowledgedBalance) ? 'border-amber-300 text-amber-600' : ''}`} 
-              disabled={!!recipientError || !recipient.trim()}
+              disabled={!!recipientError || !!amountError || !recipient.trim() || !amount.trim()}
               icon={isInsufficient ? <AlertTriangle className="w-4 h-4" /> : (activeAccountType === 'SAFE' ? undefined : <Zap className="w-4 h-4" />)}
             >
               {isInsufficient 

@@ -226,7 +226,9 @@ export const SafeSettings: React.FC<SafeSettingsProps> = ({
     await new Promise(r => setTimeout(r, 600));
     updateOpStatus(target, 'remove', { step: 'syncing' });
     try {
-      const result = await onRemoveOwner(owner, Math.max(1, safeDetails.threshold - 1));
+      const nextOwnerCount = Math.max(1, safeDetails.owners.length - 1);
+      const nextThreshold = Math.min(safeDetails.threshold, nextOwnerCount);
+      const result = await onRemoveOwner(owner, nextThreshold);
       if (result) {
         if (safeDetails.threshold === 1) updateOpStatus(target, 'remove', { step: 'verifying' });
         else { updateOpStatus(target, 'remove', { step: 'success' }); setTimeout(() => clearOp(target, 'remove'), 2000); }

@@ -23,6 +23,7 @@ export const useWalletData = ({
   const [tokenBalances, setTokenBalances] = useState<Record<string, string>>({});
   const [safeDetails, setSafeDetails] = useState<SafeDetails | null>(null);
   const [isInitialFetchDone, setIsInitialFetchDone] = useState(false);
+  const requestIdRef = useRef(0);
 
   /**
    * 【RPC 优化：合约身份缓存 (Contract Identity Cache)】
@@ -43,6 +44,7 @@ export const useWalletData = ({
   // 监听钱包注销
   useEffect(() => {
     if (!wallet) {
+      requestIdRef.current++;
       setIsInitialFetchDone(false);
       verifiedContractRef.current = null;
       lastFetchTime.current = 0;
@@ -57,6 +59,7 @@ export const useWalletData = ({
    * 逻辑：只要地址或链发生变化，立即清空内存中的合约验证状态和多签细节。
    */
   useEffect(() => {
+    requestIdRef.current++;
     verifiedContractRef.current = null;
     lastFetchTime.current = 0; 
     setSafeDetails(null); // 立即清理成员列表，防止多签合约间数据污染
@@ -73,6 +76,8 @@ export const useWalletData = ({
     const now = Date.now();
     if (!force && (now - lastFetchTime.current < FETCH_COOLDOWN)) return;
 
+    const requestId = ++requestIdRef.current;
+
     setIsLoading(true);
     try {
       lastFetchTime.current = now; 
@@ -85,10 +90,13 @@ export const useWalletData = ({
           TronService.getBalance(host, activeAddress),
           ...activeChainTokens.map((t: TokenConfig) => TronService.getTRC20Balance(host, t.address, activeAddress))
         ]);
+        if (requestId !== requestIdRef.current) return;
         
         setBalance(ethers.formatUnits(balSun, 6)); 
         activeChainTokens.forEach((t: TokenConfig, i: number) => {
-           currentBalances[t.symbol] = ethers.formatUnits(tokenResults[i], t.decimals);
+           const v = ethers.formatUnits(tokenResults[i], t.decimals);
+           currentBalances[t.address.toLowerCase()] = v;
+           if (!(t.symbol in currentBalances)) currentBalances[t.symbol] = v;
         });
         setTokenBalances(currentBalances);
       } else {
@@ -104,6 +112,7 @@ export const useWalletData = ({
         }
 
         const baseResults = await Promise.all(baseTasks);
+        if (requestId !== requestIdRef.current) return;
         setBalance(ethers.formatEther(baseResults[0]));
 
         if (activeAccountType === 'SAFE' && !isContractVerified) {
@@ -122,6 +131,7 @@ export const useWalletData = ({
              safeContract.getThreshold(),
              safeContract.nonce()
           ]);
+          if (requestId !== requestIdRef.current) return;
           // 确保写入的是当前 activeAddress 的数据
           setSafeDetails({ owners, threshold: Number(threshold), nonce: Number(nonce) });
         }
@@ -131,17 +141,25 @@ export const useWalletData = ({
           try {
             const contract = new ethers.Contract(token.address, ERC20_ABI, provider);
             const bal = await contract.balanceOf(activeAddress);
-            currentBalances[token.symbol] = ethers.formatUnits(bal, token.decimals);
-          } catch (e) { currentBalances[token.symbol] = '0.00'; }
+            const v = ethers.formatUnits(bal, token.decimals);
+            currentBalances[token.address.toLowerCase()] = v;
+            if (!(token.symbol in currentBalances)) currentBalances[token.symbol] = v;
+          } catch (e) {
+            currentBalances[token.address.toLowerCase()] = '0.00';
+            if (!(token.symbol in currentBalances)) currentBalances[token.symbol] = '0.00';
+          }
         }));
+        if (requestId !== requestIdRef.current) return;
 
         setTokenBalances(currentBalances);
       }
     } catch (e: any) {
       setError("Data synchronization fault");
     } finally {
-      setIsLoading(false);
-      setIsInitialFetchDone(true);
+      if (requestId === requestIdRef.current) {
+        setIsLoading(false);
+        setIsInitialFetchDone(true);
+      }
     }
   };
 

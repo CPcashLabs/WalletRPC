@@ -108,7 +108,12 @@ export const useEvmWallet = () => {
   }, [activeChain]);
 
   const activeChainTokens = useMemo(() => {
-    return [...(activeChain.tokens || []), ...(customTokens[activeChainId] || [])];
+    const merged = [...(activeChain.tokens || []), ...(customTokens[activeChainId] || [])];
+    const deduped = new Map<string, TokenConfig>();
+    merged.forEach(token => {
+      deduped.set(token.address.toLowerCase(), token);
+    });
+    return Array.from(deduped.values());
   }, [activeChain, customTokens, activeChainId]);
 
   const dataLayer = useWalletData({
@@ -168,6 +173,15 @@ export const useEvmWallet = () => {
 
   const confirmAddToken = async (address: string) => {
     if (!provider || !address) return;
+    if (!ethers.isAddress(address)) {
+      setError("Invalid token address.");
+      return;
+    }
+    const normalized = address.toLowerCase();
+    if (activeChainTokens.some(t => t.address.toLowerCase() === normalized)) {
+      setError("Token already exists on this network.");
+      return;
+    }
     setIsLoading(true);
     try {
       const contract = new ethers.Contract(address, ERC20_ABI, provider);

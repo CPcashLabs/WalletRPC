@@ -157,6 +157,10 @@ export const useSafeManager = ({
   const handleAddSignature = async (tx: SafePendingTx) => {
     if (!wallet) return;
     try {
+      const ownersLower = (safeDetails?.owners || []).map((o: string) => o.toLowerCase());
+      if (ownersLower.length > 0 && !ownersLower.includes(wallet.address.toLowerCase())) {
+        throw new Error("Current wallet is not a Safe owner");
+      }
       const flatSig = await wallet.signMessage(ethers.getBytes(tx.safeTxHash));
       const sig = ethers.Signature.from(flatSig);
       let v = sig.v; if (v < 30) v += 4;
@@ -175,8 +179,15 @@ export const useSafeManager = ({
   const handleExecutePending = async (tx: SafePendingTx) => {
     if (!wallet || !provider || !activeSafeAddress) return;
     try {
+      const ownersLower = (safeDetails?.owners || []).map((o: string) => o.toLowerCase());
       // Sort signatures by owner address as required by Safe
-      const sortedOwners = Object.keys(tx.signatures).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+      const sortedOwners = Object.keys(tx.signatures)
+        .filter(owner => ownersLower.length === 0 || ownersLower.includes(owner.toLowerCase()))
+        .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+      const requiredThreshold = safeDetails?.threshold || 1;
+      if (sortedOwners.length < requiredThreshold) {
+        throw new Error("Not enough valid owner signatures");
+      }
       const signatures = ethers.concat(sortedOwners.map(owner => tx.signatures[owner]));
 
       const safeContract = new ethers.Contract(activeSafeAddress, SAFE_ABI, wallet.connect(provider));

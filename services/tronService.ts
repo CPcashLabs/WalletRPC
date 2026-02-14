@@ -81,6 +81,27 @@ export const TronService = {
   },
 
   /**
+   * 查询交易是否已上链以及执行结果
+   */
+  getTransactionInfo: async (host: string, txid: string): Promise<{ found: boolean; success?: boolean }> => {
+    try {
+      const baseUrl = host.endsWith('/') ? host.slice(0, -1) : host;
+      const response = await fetch(`${baseUrl}/walletsolidity/gettransactioninfobyid`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: txid })
+      });
+      const result = await response.json();
+      if (!result || Object.keys(result).length === 0) return { found: false };
+      const receiptResult = result.receipt?.result;
+      if (receiptResult && receiptResult !== 'SUCCESS') return { found: true, success: false };
+      return { found: true, success: true };
+    } catch (e) {
+      return { found: false };
+    }
+  },
+
+  /**
    * 构建、签名并广播交易
    */
   sendTransaction: async (host: string, privateKey: string, to: string, amount: bigint, contractAddress?: string): Promise<{ success: boolean; txid?: string; error?: string }> => {
@@ -115,13 +136,17 @@ export const TronService = {
         transaction = result.transaction;
       } else {
         // Native TRX Transfer
+        const amountNumber = Number(amount);
+        if (!Number.isSafeInteger(amountNumber) || amountNumber < 0) {
+          throw new Error("TRX amount exceeds safe integer range");
+        }
         const response = await fetch(`${baseUrl}/wallet/createtransaction`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             owner_address: ownerHex,
             to_address: toHex,
-            amount: Number(amount),
+            amount: amountNumber,
             visible: false
           })
         });

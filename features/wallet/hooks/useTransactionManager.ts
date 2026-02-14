@@ -44,6 +44,11 @@ export const useTransactionManager = ({
   const localNonceRef = useRef<number | null>(null);
   const isSyncingRef = useRef<boolean>(false);
 
+  // 账户、链或 provider 变化时强制失效，避免沿用旧 Nonce
+  useEffect(() => {
+    localNonceRef.current = null;
+  }, [wallet?.address, activeChainId, provider, activeAccountType]);
+
   /**
    * 同步 Nonce 状态（仅在初始化或错误恢复时调用）
    * 策略：使用 'pending' 标签以获取内存池中的最新值，防止 Nonce 冲突。
@@ -72,7 +77,7 @@ export const useTransactionManager = ({
    * 2. 采用 5s 节流，避免在区块生成间隔内产生无效请求。
    */
   useEffect(() => {
-    if (activeChain.chainType === 'TRON' || !provider || transactions.length === 0) return;
+    if (transactions.length === 0) return;
     
     const interval = setInterval(async () => {
       const currentId = Number(activeChainId);
@@ -84,21 +89,43 @@ export const useTransactionManager = ({
       
       if (pending.length === 0) return;
 
-      for (const tx of pending) {
-        if (!tx.hash) continue;
-        
+      if (activeChain.chainType === 'TRON') {
+        const updates = await Promise.all(pending.map(async (tx) => {
+          if (!tx.hash) return null;
+          try {
+            const info = await TronService.getTransactionInfo(activeChain.defaultRpcUrl, tx.hash);
+            if (!info.found) return null;
+            const status = info.success === false ? 'failed' : 'confirmed';
+            return { id: tx.id, status };
+          } catch (e) { return null; }
+        }));
+        const validUpdates = updates.filter((u): u is { id: string; status: 'confirmed' | 'failed' } => !!u);
+        if (validUpdates.length > 0) {
+          const updateMap = new Map(validUpdates.map(u => [u.id, u.status]));
+          setTransactions(prev => prev.map(t => updateMap.has(t.id) ? { ...t, status: updateMap.get(t.id)! } : t));
+          if (validUpdates.some(u => u.status === 'confirmed')) setTimeout(fetchData, 1000);
+        }
+        return;
+      }
+
+      if (!provider) return;
+
+      const updates = await Promise.all(pending.map(async (tx) => {
+        if (!tx.hash) return null;
         try {
           const normalizedHash = normalizeHex(tx.hash);
           // [RPC] 仅查询收据，不查询整笔交易详情，包体更小，解析更快
           const receipt = await provider.getTransactionReceipt(normalizedHash);
-          if (receipt) {
-            setTransactions(prev => prev.map(t => 
-              t.id === tx.id ? { ...t, status: receipt.status === 1 ? 'confirmed' : 'failed' } : t
-            ));
-            // 只有成功包含后，才触发余额刷新（减少过程中的重复余额查询）
-            if (receipt.status === 1) setTimeout(fetchData, 1000);
-          }
-        } catch (e) { }
+          if (!receipt) return null;
+          return { id: tx.id, status: receipt.status === 1 ? 'confirmed' as const : 'failed' as const };
+        } catch (e) { return null; }
+      }));
+      const validUpdates = updates.filter((u): u is { id: string; status: 'confirmed' | 'failed' } => !!u);
+      if (validUpdates.length > 0) {
+        const updateMap = new Map(validUpdates.map(u => [u.id, u.status]));
+        setTransactions(prev => prev.map(t => updateMap.has(t.id) ? { ...t, status: updateMap.get(t.id)! } : t));
+        // 只有成功包含后，才触发余额刷新（减少过程中的重复余额查询）
+        if (validUpdates.some(u => u.status === 'confirmed')) setTimeout(fetchData, 1000);
       }
     }, 5000);
 
@@ -114,7 +141,10 @@ export const useTransactionManager = ({
       if (!wallet || (!provider && !isTron)) throw new Error("Wallet/Provider not ready");
 
       const displaySymbol = data.asset === 'NATIVE' ? activeChain.currencySymbol : data.asset;
-      const token = activeChain.tokens.find((t: TokenConfig) => t.symbol === data.asset);
+      const token = data.assetAddress
+        ? (activeChain.tokens.find((t: TokenConfig) => t.address.toLowerCase() === String(data.assetAddress).toLowerCase())
+          || { symbol: data.asset, name: data.asset, address: data.assetAddress, decimals: Number(data.assetDecimals ?? 18) })
+        : activeChain.tokens.find((t: TokenConfig) => t.symbol === data.asset);
 
       // --- [特殊路径：Safe 多签提议] ---
       // 此处完全不占用 EOA 的 Nonce，通过 SafeManager 的 Batch 逻辑实现 0 冗余 RPC
@@ -142,7 +172,7 @@ export const useTransactionManager = ({
       // 优化：TronService 使用自定义构建逻辑，仅产生 1 次广播请求，不预检 Nonce。
       if (isTron) {
         if (!tronPrivateKey) throw new Error("TRON private key missing");
-        const decimals = data.asset === 'NATIVE' ? 6 : (token?.decimals || 6);
+        const decimals = data.asset === 'NATIVE' ? 6 : (token?.decimals || Number(data.assetDecimals ?? 6));
         const amountSun = ethers.parseUnits(data.amount || "0", decimals);
 
         const result = await TronService.sendTransaction(

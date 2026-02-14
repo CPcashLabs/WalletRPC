@@ -48,6 +48,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
 }) => {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
+  const getTokenBalance = (token: TokenConfig) => tokenBalances[token.address.toLowerCase()] ?? tokenBalances[token.symbol] ?? '0';
 
   const handleCopy = (e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -66,6 +67,11 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
         {chain.name}
       </span>
     );
+  };
+
+  const getTxExplorerHref = (tx: TransactionRecord) => {
+    const txChain = chains.find(c => c.id === tx.chainId) || activeChain;
+    return tx.hash ? getExplorerLink(txChain, tx.hash) : '#';
   };
 
   return (
@@ -144,7 +150,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
               </div>
               <div className="text-right ml-3">
                 <div className="font-mono font-bold text-lg text-slate-900 group-hover:text-[#0062ff] transition-colors">
-                  <CountUp value={tokenBalances[t_item.symbol] || '0'} decimals={4} className="tabular-nums" />
+                  <CountUp value={getTokenBalance(t_item)} decimals={4} className="tabular-nums" />
                 </div>
               </div>
             </div>
@@ -176,7 +182,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
                     </div>
                   </div>
                   {tx.hash && (
-                    <a href={getExplorerLink(activeChain, tx.hash)} target="_blank" rel="noreferrer" className="p-2 text-slate-300 hover:text-[#0062ff]"><ExternalLink className="w-4 h-4" /></a>
+                    <a href={getTxExplorerHref(tx)} target="_blank" rel="noreferrer" className="p-2 text-slate-300 hover:text-[#0062ff]"><ExternalLink className="w-4 h-4" /></a>
                   )}
                 </div>
               )
