@@ -12,6 +12,14 @@ It provides a unified frontend experience for key EVM/TRON wallet flows, with au
 - Built-in unit, component, and end-to-end UI automation tests
 - Lifecycle-aware refresh strategy to avoid redundant RPC calls
 
+## Principles (Non-Negotiable)
+
+- RPC-only: business requests must only go to decentralized RPC endpoints (no centralized backend APIs)
+- Backend zero-dependency: no server-side account system, no user database
+- Zero telemetry: no analytics scripts, tracking pixels, or behavior reporting
+- Key safety: mnemonic/private keys stay in browser memory only and are cleared from the import input after success
+- Persistence boundary: only non-sensitive user preferences (e.g., custom RPC URLs, tracked Safes, custom tokens, language) may be saved to browser local storage
+
 ## Tech Stack
 
 - Frontend: React + TypeScript + Vite

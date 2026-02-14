@@ -9,3 +9,7 @@ This directory contains chain-facing service abstractions.
 ## Functional Role
 - Encapsulates chain protocol details and fee calculations.
 - Exposes reusable service APIs to wallet hooks and transaction flows.
+
+## Architectural Constraint (P0)
+- All service-layer network calls must be RPC-only (no centralized backend business APIs).
+- Service logic must not introduce telemetry, analytics, or user-identifying uploads.
