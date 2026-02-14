@@ -45,6 +45,9 @@ const NotificationToast: React.FC<{ message: string; onClose: () => void }> = ({
 
 export const WalletApp: React.FC = () => {
   const { t } = useTranslation();
+  const isE2EBypassIntro =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('e2e') === '1';
   const {
     wallet, setWallet, activeChain, activeAddress, activeChainTokens, activeAccountType, setActiveAccountType, activeSafeAddress, setActiveSafeAddress,
     activeChainId, setActiveChainId, chains, view, setView, isMenuOpen, setIsMenuOpen, isLoading, isInitialFetchDone, error, errorObject, notification,
@@ -65,6 +68,10 @@ export const WalletApp: React.FC = () => {
   const onImportWrapper = async () => {
      const success = await handleImport();
      if (success) {
+        if (isE2EBypassIntro) {
+          setView('dashboard');
+          return;
+        }
         setIsOnboardingExiting(true);
         setTimeout(() => { setView('intro_animation'); setIsOnboardingExiting(false); }, 1000);
      }
