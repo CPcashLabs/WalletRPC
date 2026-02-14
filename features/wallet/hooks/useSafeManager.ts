@@ -86,7 +86,16 @@ export const useSafeManager = ({
         } else {
            // 否则仅作为提议存入内存，0 RPC。
            setPendingSafeTxs((prev: SafePendingTx[]) => [...prev, {
-              id: Date.now().toString(), to, value: value.toString(), data, nonce: currentNonce, safeTxHash, signatures: { [wallet.address]: adjustedSig }, summary: summary || "Proposal"
+              id: Date.now().toString(),
+              chainId: Number(activeChainId),
+              safeAddress: activeSafeAddress,
+              to,
+              value: value.toString(),
+              data,
+              nonce: currentNonce,
+              safeTxHash,
+              signatures: { [wallet.address]: adjustedSig },
+              summary: summary || "Proposal"
            }]);
            setView('safe_queue');
            return true;

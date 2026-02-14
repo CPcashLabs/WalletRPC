@@ -10,6 +10,8 @@ const MOCK_ROOT2 = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
 const MOCK_ROOT3 = '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
 const abiCoder = AbiCoder.defaultAbiCoder();
 const MOCK_TOKEN_ADDRESS = '0x00000000000000000000000000000000000000aa';
+const MOCK_SAFE_ADDRESS = '0x000000000000000000000000000000000000dead';
+const MOCK_SAFE_OWNER = '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266';
 
 const toRpcResponse = (id: unknown, result: unknown) => ({
   jsonrpc: '2.0',
@@ -23,6 +25,17 @@ const mockEthCall = (params: any[]): string => {
   const data = String(call?.data || '').toLowerCase();
 
   if (target !== MOCK_TOKEN_ADDRESS) {
+    if (target === MOCK_SAFE_ADDRESS) {
+      if (data.startsWith('0xa0e67e2b')) {
+        return abiCoder.encode(['address[]'], [[MOCK_SAFE_OWNER]]);
+      }
+      if (data.startsWith('0xe75235b8')) {
+        return abiCoder.encode(['uint256'], [1]);
+      }
+      if (data.startsWith('0xaffed0e0')) {
+        return abiCoder.encode(['uint256'], [5]);
+      }
+    }
     return '0x';
   }
 
@@ -58,6 +71,9 @@ const resolveMethod = (method: string, params: any[]): any => {
     case 'eth_getTransactionCount':
       return '0x1';
     case 'eth_getCode':
+      if (String(params?.[0] || '').toLowerCase() === MOCK_SAFE_ADDRESS) {
+        return '0x60806040';
+      }
       return '0x';
     case 'eth_call':
       return mockEthCall(params);

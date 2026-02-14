@@ -72,6 +72,8 @@ export interface TransactionRecord {
 
 export interface SafePendingTx {
   id: string;
+  chainId: number;
+  safeAddress: string;
   to: string;
   value: string;
   data: string;

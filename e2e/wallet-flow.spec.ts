@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { installBttcRpcMock } from './helpers/evmRpcMock';
 
 const TEST_MNEMONIC = 'test test test test test test test test test test test junk';
+const TRACKED_SAFE = '0x000000000000000000000000000000000000dEaD';
 
 const importToDashboard = async (page: import('@playwright/test').Page) => {
   await installBttcRpcMock(page);
@@ -78,7 +79,7 @@ test.describe('Wallet Flow (Mocked RPC)', () => {
     await page.getByRole('button', { name: /^IMPORT$/i }).click();
     await expect(page.getByRole('heading', { name: /SYNC EXISTING|同步现有/i })).toBeVisible();
 
-    await page.getByPlaceholder('0x...').fill('0x000000000000000000000000000000000000dEaD');
+    await page.getByPlaceholder('0x...').fill(TRACKED_SAFE);
     await page.getByRole('button', { name: /INITIATE|同步/i }).click();
 
     await expect(page.locator('button', { hasText: /QUEUE|队列/i }).first()).toBeVisible();
@@ -91,4 +92,5 @@ test.describe('Wallet Flow (Mocked RPC)', () => {
     await expect(page.locator('button', { hasText: /QUEUE|队列/i }).first()).toBeVisible();
     await expect(page.locator('header').getByRole('button', { name: /Node Master|Safe_/i }).first()).toBeVisible();
   });
+
 });

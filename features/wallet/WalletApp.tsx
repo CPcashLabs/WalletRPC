@@ -90,6 +90,18 @@ export const WalletApp: React.FC = () => {
     }
   }, [view, minTimePassed, isInitialFetchDone, setView]);
 
+  const safePendingCount = React.useMemo(() => {
+    if (!activeSafeAddress || safeDetails?.nonce == null) return 0;
+    const safeLower = activeSafeAddress.toLowerCase();
+    return pendingSafeTxs.filter((tx) => {
+      return (
+        tx.chainId === Number(activeChainId) &&
+        tx.safeAddress.toLowerCase() === safeLower &&
+        tx.nonce === safeDetails.nonce
+      );
+    }).length;
+  }, [activeSafeAddress, safeDetails?.nonce, pendingSafeTxs, activeChainId]);
+
   if (view === 'onboarding' || !wallet) return <WalletOnboarding input={privateKeyOrPhrase} setInput={setPrivateKeyOrPhrase} onImport={onImportWrapper} error={error} isExiting={isOnboardingExiting} />;
   if (view === 'intro_animation') {
     return (
@@ -170,9 +182,9 @@ export const WalletApp: React.FC = () => {
 
             <React.Suspense fallback={<div className="min-h-[320px] bg-white/70 rounded-2xl border border-slate-200" />}>
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-               {view === 'dashboard' && <><WalletDashboard balance={balance} activeChain={activeChain} chains={chains} address={activeAddress || ''} isLoading={isLoading} onRefresh={fetchData} onSend={() => setView('send')} activeAccountType={activeAccountType} pendingTxCount={pendingSafeTxs.filter(t_tx => t_tx.nonce === safeDetails?.nonce).length} onViewQueue={() => setView('safe_queue')} onViewSettings={() => setView('settings')} tokens={activeChainTokens} tokenBalances={tokenBalances} onAddToken={() => setIsAddTokenModalOpen(true)} onEditToken={setTokenToEdit} transactions={transactions} /><div className="mt-12 mb-6 text-center opacity-20"><p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.4em] italic">{t('wallet.disclaimer')}</p></div></>}
+               {view === 'dashboard' && <><WalletDashboard balance={balance} activeChain={activeChain} chains={chains} address={activeAddress || ''} isLoading={isLoading} onRefresh={fetchData} onSend={() => setView('send')} activeAccountType={activeAccountType} pendingTxCount={safePendingCount} onViewQueue={() => setView('safe_queue')} onViewSettings={() => setView('settings')} tokens={activeChainTokens} tokenBalances={tokenBalances} onAddToken={() => setIsAddTokenModalOpen(true)} onEditToken={setTokenToEdit} transactions={transactions} /><div className="mt-12 mb-6 text-center opacity-20"><p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.4em] italic">{t('wallet.disclaimer')}</p></div></>}
                {view === 'send' && <SendForm activeChain={activeChain} tokens={activeChainTokens} balances={{ ...tokenBalances, NATIVE: balance }} activeAccountType={activeAccountType} recommendedNonce={currentNonce} onSend={handleSendSubmit} onBack={() => setView('dashboard')} onRefresh={fetchData} isLoading={isLoading} transactions={transactions} />}
-               {view === 'safe_queue' && <SafeQueue pendingTxs={pendingSafeTxs} safeDetails={safeDetails} walletAddress={wallet?.address} onSign={handleAddSignature} onExecute={handleExecutePending} onBack={() => setView('dashboard')} />}
+               {view === 'safe_queue' && <SafeQueue pendingTxs={pendingSafeTxs} safeDetails={safeDetails} activeChainId={activeChainId} activeSafeAddress={activeSafeAddress} walletAddress={wallet?.address} onSign={handleAddSignature} onExecute={handleExecutePending} onBack={() => setView('dashboard')} />}
                {view === 'settings' && safeDetails && <SafeSettings safeDetails={safeDetails} walletAddress={wallet?.address} onRemoveOwner={removeOwnerTx} onAddOwner={addOwnerTx} onChangeThreshold={changeThresholdTx} onBack={() => setView('dashboard')} />}
                {view === 'create_safe' && <CreateSafe onDeploy={deploySafe} onCancel={() => setView('dashboard')} isDeploying={isDeployingSafe} walletAddress={wallet?.address} />}
                {view === 'add_safe' && <TrackSafe onTrack={handleTrackSafe} onCancel={() => setView('dashboard')} isLoading={isLoading} />}

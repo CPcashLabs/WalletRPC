@@ -9,6 +9,8 @@ import { useTranslation } from '../../../contexts/LanguageContext';
 interface SafeQueueProps {
   pendingTxs: SafePendingTx[];
   safeDetails: SafeDetails | null;
+  activeChainId: number;
+  activeSafeAddress?: string | null;
   walletAddress?: string;
   onSign: (tx: SafePendingTx) => void;
   onExecute: (tx: SafePendingTx) => void;
@@ -18,6 +20,8 @@ interface SafeQueueProps {
 export const SafeQueue: React.FC<SafeQueueProps> = ({
   pendingTxs,
   safeDetails,
+  activeChainId,
+  activeSafeAddress,
   walletAddress,
   onSign,
   onExecute,
@@ -25,7 +29,13 @@ export const SafeQueue: React.FC<SafeQueueProps> = ({
 }) => {
   const { t } = useTranslation();
   const nonce = safeDetails?.nonce;
-  const filteredTxs = pendingTxs.filter(tx => tx.nonce === nonce);
+  const safeAddress = activeSafeAddress?.toLowerCase();
+  const filteredTxs = pendingTxs.filter((tx) => {
+    if (tx.chainId !== activeChainId) return false;
+    if (!safeAddress) return false;
+    if (tx.safeAddress.toLowerCase() !== safeAddress) return false;
+    return tx.nonce === nonce;
+  });
 
   return (
     <div className="space-y-6 animate-tech-in">
