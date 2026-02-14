@@ -16,6 +16,10 @@ const importToDashboard = async (page: import('@playwright/test').Page) => {
   }
 };
 
+const openHeaderAccountMenu = async (page: import('@playwright/test').Page) => {
+  await page.getByRole('button', { name: /MASTER KEY|主密钥|TRON NODE/i }).click();
+};
+
 test.describe('Wallet Flow (Mocked RPC)', () => {
   test('导入后进入 Dashboard 并可切换到发送页', async ({ page }) => {
     await importToDashboard(page);
@@ -42,5 +46,49 @@ test.describe('Wallet Flow (Mocked RPC)', () => {
     await expect(page.getByText(/Transmission Confirmed|传输已确认/)).toBeVisible({ timeout: 10000 });
     await page.getByRole('button', { name: /RETURN_TO_BASE|返回主界面/ }).click();
     await expect(page.locator('button', { hasText: /SEND|发送/i }).first()).toBeVisible();
+  });
+
+  test('可导入自定义 Token 并完成编辑删除', async ({ page }) => {
+    await importToDashboard(page);
+
+    await page.getByRole('button', { name: /IMPORT_TOKEN|IMPORT TOKEN|导入代币/i }).click();
+    await page.getByPlaceholder('0x...').fill('0x00000000000000000000000000000000000000aa');
+    await page.getByRole('button', { name: /IMPORT_TOKEN|IMPORT TOKEN|导入代币/i }).last().click();
+
+    await expect(page.getByText(/Imported MCK successfully/i)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/MOCK TOKEN|Mock Token/i).first()).toBeVisible();
+
+    await page.getByText(/MOCK TOKEN|Mock Token/i).first().click();
+    const symbolInput = page.getByRole('textbox').first();
+    await symbolInput.fill('MCK2');
+    await page.getByRole('button', { name: /SAVE CHANGES|保存/i }).click();
+    await expect(page.getByText(/Token updated/i)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('MCK2')).toBeVisible();
+
+    await page.getByText(/MOCK TOKEN|Mock Token/i).first().click();
+    await page.getByRole('button', { name: /DELETE|删除/i }).click();
+    await expect(page.getByText(/Token removed/i)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('MCK2')).toHaveCount(0);
+  });
+
+  test('可跟踪 Safe 并切换到 SAFE 视图访问队列和设置', async ({ page }) => {
+    await importToDashboard(page);
+
+    await openHeaderAccountMenu(page);
+    await page.getByRole('button', { name: /^IMPORT$/i }).click();
+    await expect(page.getByRole('heading', { name: /SYNC EXISTING|同步现有/i })).toBeVisible();
+
+    await page.getByPlaceholder('0x...').fill('0x000000000000000000000000000000000000dEaD');
+    await page.getByRole('button', { name: /INITIATE|同步/i }).click();
+
+    await expect(page.locator('button', { hasText: /QUEUE|队列/i }).first()).toBeVisible();
+    await expect(page.locator('button', { hasText: /MOD|设置/i }).first()).toBeVisible();
+
+    await page.locator('button', { hasText: /QUEUE|队列/i }).first().click();
+    await expect(page.getByText(/ALL CLEAR|全部清空|无待处理/i)).toBeVisible();
+
+    await page.locator('main').getByRole('button').first().click();
+    await expect(page.locator('button', { hasText: /QUEUE|队列/i }).first()).toBeVisible();
+    await expect(page.locator('header').getByRole('button', { name: /Node Master|Safe_/i }).first()).toBeVisible();
   });
 });

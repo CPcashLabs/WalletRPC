@@ -1,5 +1,5 @@
 import type { Page, Route } from '@playwright/test';
-import { keccak256 } from 'ethers';
+import { AbiCoder, keccak256 } from 'ethers';
 
 const BTTC_RPC_HOST = 'rpc.bittorrentchain.io';
 const MOCK_TX_HASH = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
@@ -8,12 +8,42 @@ const MOCK_PARENT_HASH = '0xcccccccccccccccccccccccccccccccccccccccccccccccccccc
 const MOCK_ROOT = '0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd';
 const MOCK_ROOT2 = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
 const MOCK_ROOT3 = '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
+const abiCoder = AbiCoder.defaultAbiCoder();
+const MOCK_TOKEN_ADDRESS = '0x00000000000000000000000000000000000000aa';
 
 const toRpcResponse = (id: unknown, result: unknown) => ({
   jsonrpc: '2.0',
   id,
   result
 });
+
+const mockEthCall = (params: any[]): string => {
+  const call = params?.[0] || {};
+  const target = String(call?.to || '').toLowerCase();
+  const data = String(call?.data || '').toLowerCase();
+
+  if (target !== MOCK_TOKEN_ADDRESS) {
+    return '0x';
+  }
+
+  if (data.startsWith('0x06fdde03')) {
+    return abiCoder.encode(['string'], ['Mock Token']);
+  }
+
+  if (data.startsWith('0x95d89b41')) {
+    return abiCoder.encode(['string'], ['MCK']);
+  }
+
+  if (data.startsWith('0x313ce567')) {
+    return abiCoder.encode(['uint8'], [18]);
+  }
+
+  if (data.startsWith('0x70a08231')) {
+    return abiCoder.encode(['uint256'], [BigInt('1000000000000000000')]);
+  }
+
+  return '0x';
+};
 
 const resolveMethod = (method: string, params: any[]): any => {
   switch (method) {
@@ -30,7 +60,7 @@ const resolveMethod = (method: string, params: any[]): any => {
     case 'eth_getCode':
       return '0x';
     case 'eth_call':
-      return '0x0000000000000000000000000000000000000000000000000de0b6b3a7640000'; // token balance = 1e18
+      return mockEthCall(params);
     case 'eth_gasPrice':
       return '0x3b9aca00'; // 1 gwei
     case 'eth_maxPriorityFeePerGas':
