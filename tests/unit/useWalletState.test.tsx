@@ -78,4 +78,38 @@ describe('useWalletState', () => {
     expect(success).toBe(false);
     expect(result.current.error).toBe('Invalid Key/Mnemonic');
   });
+
+  it('clearSession 会清空会话敏感状态并重置视图', async () => {
+    vi.spyOn(TronService, 'addressFromPrivateKey').mockReturnValue(`T${'3'.repeat(33)}`);
+    const privateKeyNoPrefix = '59c6995e998f97a5a0044966f0945382d7f9e9955f5d5f8d6f2ad4d9c7cb4d95';
+    const { result } = renderHook(() => useWalletState(1));
+
+    act(() => {
+      result.current.setPrivateKeyOrPhrase(privateKeyNoPrefix);
+      result.current.setActiveAccountType('SAFE');
+      result.current.setActiveSafeAddress('0x000000000000000000000000000000000000dEaD');
+      result.current.setView('send');
+    });
+
+    await act(async () => {
+      await result.current.handleImport();
+    });
+
+    expect(result.current.wallet).not.toBeNull();
+    expect(result.current.tronPrivateKey).toBeTruthy();
+    expect(result.current.activeAccountType).toBe('SAFE');
+    expect(result.current.view).toBe('send');
+
+    act(() => {
+      result.current.clearSession();
+    });
+
+    expect(result.current.wallet).toBeNull();
+    expect(result.current.tronPrivateKey).toBeNull();
+    expect(result.current.tronWalletAddress).toBeNull();
+    expect(result.current.privateKeyOrPhrase).toBe('');
+    expect(result.current.activeAccountType).toBe('EOA');
+    expect(result.current.activeSafeAddress).toBeNull();
+    expect(result.current.view).toBe('onboarding');
+  });
 });

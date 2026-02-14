@@ -85,7 +85,7 @@ export const useEvmWallet = () => {
     wallet, tronPrivateKey, activeAccountType, setActiveAccountType, activeSafeAddress, setActiveSafeAddress,
     activeChainId, setActiveChainId, view, setView, error, setError, notification, setNotification,
     tokenToEdit, setTokenToEdit, isChainModalOpen, setIsChainModalOpen, isAddTokenModalOpen, setIsAddTokenModalOpen,
-    handleImport, privateKeyOrPhrase, setPrivateKeyOrPhrase, setWallet, isMenuOpen, setIsMenuOpen, isLoading, setIsLoading,
+    handleImport, clearSession, privateKeyOrPhrase, setPrivateKeyOrPhrase, setWallet, isMenuOpen, setIsMenuOpen, isLoading, setIsLoading,
   } = state;
 
   const activeChain = useMemo(() => {
@@ -181,6 +181,11 @@ export const useEvmWallet = () => {
     }
   }, [activeAccountType, setActiveAccountType, setActiveChainId, setActiveSafeAddress, setIsMenuOpen, setView]);
 
+  const handleLogout = useCallback(() => {
+    clearSession();
+    txMgr.clearTransactions();
+  }, [clearSession, txMgr]);
+
   const confirmAddToken = async (address: string) => {
     if (!provider || !address) return;
     if (!ethers.isAddress(address)) {
@@ -233,7 +238,7 @@ export const useEvmWallet = () => {
   return { 
     ...state, ...dataLayer, ...txMgr, ...safeMgr, ...storage,
     activeChain, activeAddress, activeChainTokens, provider,
-    handleSaveChain, handleTrackSafe, handleSwitchNetwork, confirmAddToken, handleUpdateToken, handleRemoveToken,
+    handleSaveChain, handleTrackSafe, handleSwitchNetwork, handleLogout, confirmAddToken, handleUpdateToken, handleRemoveToken,
     currentNonce: safeDetails?.nonce || 0
   };
 };

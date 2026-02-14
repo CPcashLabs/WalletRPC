@@ -237,5 +237,14 @@ export const useTransactionManager = ({
     }
   };
 
-  return { transactions, localNonceRef, handleSendSubmit, syncNonce, addTransactionRecord: (r: any) => setTransactions(p => [r, ...p]) };
+  const addTransactionRecord = (record: TransactionRecord) => {
+    setTransactions((prev) => [record, ...prev]);
+  };
+
+  const clearTransactions = () => {
+    setTransactions([]);
+    localNonceRef.current = null;
+  };
+
+  return { transactions, localNonceRef, handleSendSubmit, syncNonce, addTransactionRecord, clearTransactions };
 };

@@ -80,13 +80,30 @@ export const useWalletState = (initialChainId: number) => {
     setErrorObject(msg ? { message: msg, timestamp: Date.now() } : null);
   };
 
+  const clearSession = () => {
+    setWallet(null);
+    setTronWalletAddress(null);
+    setTronPrivateKey(null);
+    setActiveAccountType('EOA');
+    setActiveSafeAddress(null);
+    setPrivateKeyOrPhrase('');
+    setIsLoading(false);
+    setErrorObject(null);
+    setNotification(null);
+    setTokenToEdit(null);
+    setIsChainModalOpen(false);
+    setIsAddTokenModalOpen(false);
+    setIsMenuOpen(false);
+    setView('onboarding');
+  };
+
   return {
     wallet, setWallet, tronWalletAddress, tronPrivateKey,
     activeAccountType, setActiveAccountType, activeSafeAddress, setActiveSafeAddress,
     activeChainId, setActiveChainId, view, setView,
     privateKeyOrPhrase, setPrivateKeyOrPhrase, isLoading, setIsLoading,
     error: errorObject?.message || null, errorObject, setError,
-    notification, setNotification, handleImport,
+    notification, setNotification, handleImport, clearSession,
     // 返回缺失的 UI 状态
     tokenToEdit, setTokenToEdit,
     isChainModalOpen, setIsChainModalOpen,

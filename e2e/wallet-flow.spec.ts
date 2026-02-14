@@ -113,4 +113,12 @@ test.describe('Wallet Flow (Mocked RPC)', () => {
     await expect(page.locator('header').getByRole('button', { name: /MASTER KEY|主密钥/i }).first()).toBeVisible();
   });
 
+  test('登出会清空会话并回到干净的 onboarding 页面', async ({ page }) => {
+    await importToDashboard(page);
+
+    await page.getByRole('button', { name: /KILL_SIG|结束会话/i }).click();
+    await expect(page.getByPlaceholder('Private Key / Mnemonic')).toBeVisible();
+    await expect(page.getByRole('button', { name: /Confirm|确认/i })).toBeDisabled();
+  });
+
 });
