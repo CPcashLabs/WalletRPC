@@ -21,12 +21,30 @@ interface LanguageContextType {
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
+const safeLocalStorageGet = (key: string): string | null => {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return null;
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
+const safeLocalStorageSet = (key: string, value: string): void => {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    window.localStorage.setItem(key, value);
+  } catch {
+    // ignore (private mode / denied access)
+  }
+};
+
 export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [language, setLanguage] = useState<Language>('en');
 
   useEffect(() => {
     // 逻辑：优先读取用户持久化配置，实现状态锁定
-    const savedLang = localStorage.getItem('nexus_lang') as Language;
+    const savedLang = safeLocalStorageGet('nexus_lang') as Language | null;
     if (savedLang) {
       setLanguage(savedLang);
     } else {
@@ -37,7 +55,7 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const handleSetLanguage = useCallback((lang: Language) => {
     setLanguage(lang);
-    localStorage.setItem('nexus_lang', lang);
+    safeLocalStorageSet('nexus_lang', lang);
   }, []);
 
   /**

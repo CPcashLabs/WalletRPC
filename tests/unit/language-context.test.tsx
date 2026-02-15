@@ -63,4 +63,27 @@ describe('LanguageContext', () => {
     expect(result.current.t('wallet.title')).toBe('Wallet RPC');
     expect(result.current.t('non.exist.key')).toBe('non.exist.key');
   });
+
+  it('当 localStorage 不可用时不应崩溃，仍可切换语言并正常翻译', async () => {
+    const getItemSpy = vi.spyOn(window.localStorage, 'getItem').mockImplementation(() => {
+      throw new Error('denied');
+    });
+    const setItemSpy = vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => {
+      throw new Error('denied');
+    });
+
+    const { result } = renderHook(() => useTranslation(), { wrapper });
+
+    act(() => {
+      result.current.setLanguage('zh-SG');
+    });
+
+    await waitFor(() => {
+      expect(result.current.language).toBe('zh-SG');
+    });
+    expect(result.current.t('common.confirm')).toBe('确认');
+
+    getItemSpy.mockRestore();
+    setItemSpy.mockRestore();
+  });
 });
