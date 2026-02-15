@@ -27,7 +27,7 @@ const chain: ChainConfig = {
   tokens: []
 };
 
-describe('Modals UI', () => {
+ describe('Modals UI', () => {
   it('ChainModal 支持切换网络并保存配置', async () => {
     const user = userEvent.setup();
     const onSwitchNetwork = vi.fn();
@@ -112,6 +112,30 @@ describe('Modals UI', () => {
     const selects = screen.getAllByRole('combobox');
     await user.selectOptions(selects[2], 'altscan');
     expect(websiteLink).toHaveAttribute('href', 'https://alt.example');
+  });
+
+  it('ChainModal 与 AddTokenModal 的 GitHub 链接应指向当前仓库', async () => {
+    const user = userEvent.setup();
+
+    const { unmount } = wrap(
+      <ChainModal
+        isOpen={true}
+        onClose={vi.fn()}
+        initialConfig={chain}
+        chains={[chain]}
+        onSwitchNetwork={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByRole('button', { name: /Technical Details/i }));
+    const contributeLink = screen.getByRole('link', { name: /Contribute on GitHub/i });
+    expect(contributeLink).toHaveAttribute('href', 'https://github.com/CrossPayDao/WalletRPC');
+
+    unmount();
+    wrap(<AddTokenModal isOpen={true} onClose={vi.fn()} onImport={vi.fn()} isImporting={false} />);
+    const addLink = screen.getByRole('link', { name: /Add permanently via GitHub/i });
+    expect(addLink).toHaveAttribute('href', 'https://github.com/CrossPayDao/WalletRPC');
   });
 
   it('AddTokenModal 可输入地址并触发导入', async () => {
