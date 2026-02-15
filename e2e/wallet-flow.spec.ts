@@ -78,7 +78,7 @@ test.describe('Wallet Flow (Mocked RPC)', () => {
     await expect(page.getByText('MCK2')).toHaveCount(0);
   });
 
-  test('可跟踪 Safe 并切换到 SAFE 视图访问队列和设置', async ({ page }) => {
+  test('可跟踪 Safe 并切换到 SAFE 视图访问设置', async ({ page }) => {
     await importToDashboard(page);
 
     await openHeaderAccountMenu(page);
@@ -88,14 +88,7 @@ test.describe('Wallet Flow (Mocked RPC)', () => {
     await page.getByPlaceholder('0x...').fill(TRACKED_SAFE);
     await page.getByRole('button', { name: /INITIATE|同步/i }).click();
 
-    await expect(page.locator('button', { hasText: /QUEUE|队列/i }).first()).toBeVisible();
     await expect(page.locator('button', { hasText: /MOD|设置/i }).first()).toBeVisible();
-
-    await page.locator('button', { hasText: /QUEUE|队列/i }).first().click();
-    await expect(page.getByText(/ALL CLEAR|全部清空|无待处理/i)).toBeVisible();
-
-    await page.locator('main').getByRole('button').first().click();
-    await expect(page.locator('button', { hasText: /QUEUE|队列/i }).first()).toBeVisible();
     await expect(page.locator('header').getByRole('button', { name: /Node Master|Safe_/i }).first()).toBeVisible();
   });
 
@@ -107,14 +100,12 @@ test.describe('Wallet Flow (Mocked RPC)', () => {
     await page.getByPlaceholder('0x...').fill(TRACKED_SAFE);
     await page.getByRole('button', { name: /INITIATE|同步/i }).click();
 
-    await expect(page.locator('button', { hasText: /QUEUE|队列/i }).first()).toBeVisible();
     await expect(page.locator('button', { hasText: /MOD|设置/i }).first()).toBeVisible();
 
     await page.getByRole('button', { name: 'open-network-settings' }).click();
     await page.locator('select').first().selectOption({ label: 'Ethereum Mainnet' });
     await page.getByRole('button', { name: /SAVE CHANGES|保存更改/i }).click();
 
-    await expect(page.locator('button', { hasText: /QUEUE|队列/i })).toHaveCount(0);
     await expect(page.locator('button', { hasText: /MOD|设置/i })).toHaveCount(0);
     await expect(page.locator('header').getByRole('button', { name: /MASTER KEY|主密钥/i }).first()).toBeVisible();
   });

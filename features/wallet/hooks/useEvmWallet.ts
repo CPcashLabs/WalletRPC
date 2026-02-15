@@ -99,7 +99,7 @@ export const useEvmWallet = () => {
   const storage = useWalletStorage();
   const { 
     setTrackedSafes, chains, setChains, 
-    customTokens, setCustomTokens, setPendingSafeTxs 
+    customTokens, setCustomTokens
   } = storage;
   
   const initialChainId = chains.length > 0 ? chains[0].id : 1;
@@ -160,8 +160,8 @@ export const useEvmWallet = () => {
   });
 
   const safeMgr = useSafeManager({
-    wallet, activeSafeAddress, activeChainId, activeChain, provider, safeDetails,
-    setPendingSafeTxs, setTrackedSafes, setActiveAccountType, setActiveSafeAddress,
+    wallet, activeSafeAddress, activeChainId, activeChain, provider,
+    setTrackedSafes, setActiveAccountType, setActiveSafeAddress,
     setView, setNotification, setError,
     addTransactionRecord: txMgr.addTransactionRecord
   });
@@ -171,24 +171,6 @@ export const useEvmWallet = () => {
       safeHandlerRef.current = safeMgr.handleSafeProposal; 
     }
   }, [safeMgr?.handleSafeProposal]);
-
-  useEffect(() => {
-    if (activeAccountType !== 'SAFE' || !activeSafeAddress || safeDetails?.nonce == null) {
-      return;
-    }
-    const safeLower = activeSafeAddress.toLowerCase();
-    setPendingSafeTxs((prev) => {
-      const next = prev.filter(
-        (tx) =>
-          !(
-            tx.chainId === Number(activeChainId) &&
-            tx.safeAddress.toLowerCase() === safeLower &&
-            tx.nonce < safeDetails.nonce
-          )
-      );
-      return next.length === prev.length ? prev : next;
-    });
-  }, [activeAccountType, activeSafeAddress, activeChainId, safeDetails?.nonce, setPendingSafeTxs]);
 
   useEffect(() => {
     const isCoreView = view === 'intro_animation' || view === 'dashboard';

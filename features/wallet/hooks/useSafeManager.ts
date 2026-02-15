@@ -4,7 +4,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import { ethers } from 'ethers';
 import { SAFE_ABI, PROXY_FACTORY_ABI, ZERO_ADDRESS, SENTINEL_OWNERS, getSafeConfig } from '../config';
 import { FeeService } from '../../../services/feeService';
-import { ChainConfig, SafeDetails, SafePendingTx, TrackedSafe, TransactionRecord } from '../types';
+import { ChainConfig, TrackedSafe, TransactionRecord } from '../types';
 import { useTranslation } from '../../../contexts/LanguageContext';
 
 /**
@@ -16,8 +16,6 @@ interface UseSafeManagerParams {
   activeChainId: number;
   activeChain: ChainConfig;
   provider: ethers.JsonRpcProvider | null;
-  safeDetails: SafeDetails | null;
-  setPendingSafeTxs: Dispatch<SetStateAction<SafePendingTx[]>>;
   setTrackedSafes: Dispatch<SetStateAction<TrackedSafe[]>>;
   setActiveAccountType: (accountType: 'EOA' | 'SAFE') => void;
   setActiveSafeAddress: (address: string | null) => void;
@@ -33,8 +31,6 @@ export const useSafeManager = ({
   activeChainId,
   activeChain,
   provider,
-  safeDetails,
-  setPendingSafeTxs,
   setTrackedSafes,
   setActiveAccountType,
   setActiveSafeAddress,
@@ -59,72 +55,89 @@ export const useSafeManager = ({
    * 4. 签名过程完全在本地 CPU 完成，无 RPC 开销。
    */
   const handleSafeProposal = async (to: string, value: bigint, data: string, summary?: string): Promise<boolean> => {
-      if (!wallet || !activeSafeAddress || !provider) return false;
-      
-      if (isProposingRef.current) throw new Error(t('safe.err_busy'));
-      isProposingRef.current = true;
-      
-      try {
-        const safeContract = new ethers.Contract(activeSafeAddress, SAFE_ABI, provider);
-        
-        // [RPC 原子化合并]
-        const [currentNonce, owners, threshold] = await Promise.all([
-           safeContract.nonce().then(n => Number(n)),
-           safeContract.getOwners(),
-           safeContract.getThreshold().then(t => Number(t))
-        ]);
-        
-        const isOwner = owners.some((o: string) => o.toLowerCase() === wallet.address.toLowerCase());
-        if (!isOwner) throw new Error(t('safe.err_not_owner'));
-        
-        // [本地计算] 不占用网络
-        const safeTxHash = await safeContract.getTransactionHash(
-            to, value, data, 0, 0, 0, 0, ZERO_ADDRESS, ZERO_ADDRESS, currentNonce
+    if (!wallet || !activeSafeAddress || !provider) {
+      throw new Error(t('safe.err_proposal_failed'));
+    }
+
+    if (isProposingRef.current) throw new Error(t('safe.err_busy'));
+    isProposingRef.current = true;
+
+    try {
+      const safeContract = new ethers.Contract(activeSafeAddress, SAFE_ABI, provider);
+
+      // [RPC 原子化合并]
+      const [currentNonce, owners, threshold] = await Promise.all([
+        safeContract.nonce().then((n) => Number(n)),
+        safeContract.getOwners(),
+        safeContract.getThreshold().then((t) => Number(t))
+      ]);
+
+      const isOwner = owners.some((o: string) => o.toLowerCase() === wallet.address.toLowerCase());
+      if (!isOwner) throw new Error(t('safe.err_not_owner'));
+
+      // [本地计算] 不占用网络
+      const safeTxHash = await safeContract.getTransactionHash(
+        to,
+        value,
+        data,
+        0,
+        0,
+        0,
+        0,
+        ZERO_ADDRESS,
+        ZERO_ADDRESS,
+        currentNonce
+      );
+
+      // [本地签名] 不占用网络
+      const flatSig = await wallet.signMessage(ethers.getBytes(safeTxHash));
+      const sig = ethers.Signature.from(flatSig);
+
+      let v = sig.v;
+      if (v < 30) v += 4;
+      const adjustedSig = ethers.concat([sig.r, sig.s, new Uint8Array([v])]);
+
+      // --- 逻辑：Flash Execution (1/n 闪电执行) ---
+      // 阈值为 1：提议即执行，仅 1 次广播请求。
+      if (threshold === 1) {
+        const feeData = await FeeService.getOptimizedFeeData(provider, activeChainId);
+        const overrides = FeeService.buildOverrides(
+          feeData,
+          activeChain.gasLimits?.safeExec || 500000
+        );
+        const safeWrite = safeContract.connect(wallet.connect(provider));
+
+        const tx = await (safeWrite as any).execTransaction(
+          to,
+          value,
+          data,
+          0,
+          0,
+          0,
+          0,
+          ZERO_ADDRESS,
+          ZERO_ADDRESS,
+          adjustedSig,
+          overrides
         );
 
-        // [本地签名] 不占用网络
-        const flatSig = await wallet.signMessage(ethers.getBytes(safeTxHash));
-        const sig = ethers.Signature.from(flatSig);
-        
-        let v = sig.v; if (v < 30) v += 4;
-        const adjustedSig = ethers.concat([sig.r, sig.s, new Uint8Array([v])]);
-
-        // --- 逻辑：Flash Execution (1/n 闪电执行) ---
-        // 如果是单人多签，提议即执行，复用已获取的 Gas 缓存，仅 1 次广播请求。
-        if (threshold === 1) {
-           const feeData = await FeeService.getOptimizedFeeData(provider, activeChainId);
-           const overrides = FeeService.buildOverrides(feeData, activeChain.gasLimits?.safeExec || 500000);
-           const safeWrite = safeContract.connect(wallet.connect(provider));
-
-           const tx = await (safeWrite as any).execTransaction(
-              to, value, data, 0, 0, 0, 0, ZERO_ADDRESS, ZERO_ADDRESS, adjustedSig, overrides
-           );
-           
-           addTransactionRecord({ id: Date.now().toString(), chainId: activeChainId, hash: tx.hash, status: 'submitted', timestamp: Date.now(), summary: summary || t('safe.summary_safe_exec') });
-           return true;
-        } else {
-           // 否则仅作为提议存入内存，0 RPC。
-           setPendingSafeTxs((prev: SafePendingTx[]) => [...prev, {
-              id: Date.now().toString(),
-              chainId: Number(activeChainId),
-              safeAddress: activeSafeAddress,
-              to,
-              value: value.toString(),
-              data,
-              nonce: currentNonce,
-              safeTxHash,
-              signatures: { [wallet.address]: adjustedSig },
-              summary: summary || t('safe.summary_proposal')
-           }]);
-           setView('safe_queue');
-           return true;
-        }
-      } catch (e: any) {
-        setError(e.message || t('safe.err_proposal_failed'));
-        return false;
-      } finally {
-        isProposingRef.current = false;
+        addTransactionRecord({
+          id: Date.now().toString(),
+          chainId: activeChainId,
+          hash: tx.hash,
+          status: 'submitted',
+          timestamp: Date.now(),
+          summary: summary || t('safe.summary_safe_exec')
+        });
+        return true;
       }
+
+      // 阈值 >= 2：在“RPC-only / 无后端索引服务”的原则下，无法从链上发现/同步待签名提议。
+      // 旧实现的“交易队列”只存在于本地存储，容易误导用户为链上队列。该页面已移除。
+      throw new Error(t('safe.err_multisig_queue_unavailable'));
+    } finally {
+      isProposingRef.current = false;
+    }
   };
 
   /**
@@ -192,68 +205,6 @@ export const useSafeManager = ({
     return handleSafeProposal(activeSafeAddress, 0n, data, `${t('safe.summary_add_owner')}: ${owner.slice(0,6)}`);
   };
 
-  // Fix: Added implementation for handleAddSignature
-  const handleAddSignature = async (tx: SafePendingTx) => {
-    if (!wallet) return;
-    try {
-      const ownersLower = (safeDetails?.owners || []).map((o: string) => o.toLowerCase());
-      if (ownersLower.length > 0 && !ownersLower.includes(wallet.address.toLowerCase())) {
-        throw new Error(t('safe.err_current_wallet_not_owner'));
-      }
-      const flatSig = await wallet.signMessage(ethers.getBytes(tx.safeTxHash));
-      const sig = ethers.Signature.from(flatSig);
-      let v = sig.v; if (v < 30) v += 4;
-      const adjustedSig = ethers.concat([sig.r, sig.s, new Uint8Array([v])]);
-      
-      setPendingSafeTxs((prev: SafePendingTx[]) => prev.map(p => 
-        p.id === tx.id ? { ...p, signatures: { ...p.signatures, [wallet.address]: adjustedSig } } : p
-      ));
-      setNotification(t('safe.notice_signature_added'));
-    } catch (e: any) {
-      setError(e.message || t('safe.err_signing_failed'));
-    }
-  };
-
-  // Fix: Added implementation for handleExecutePending
-  const handleExecutePending = async (tx: SafePendingTx) => {
-    if (!wallet || !provider || !activeSafeAddress) return;
-    try {
-      const ownersLower = (safeDetails?.owners || []).map((o: string) => o.toLowerCase());
-      // Sort signatures by owner address as required by Safe
-      const sortedOwners = Object.keys(tx.signatures)
-        .filter(owner => ownersLower.length === 0 || ownersLower.includes(owner.toLowerCase()))
-        .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
-      const requiredThreshold = safeDetails?.threshold || 1;
-      if (sortedOwners.length < requiredThreshold) {
-        throw new Error(t('safe.err_not_enough_signatures'));
-      }
-      const signatures = ethers.concat(sortedOwners.map(owner => tx.signatures[owner]));
-
-      const safeContract = new ethers.Contract(activeSafeAddress, SAFE_ABI, wallet.connect(provider));
-      const feeData = await FeeService.getOptimizedFeeData(provider, activeChainId);
-      const overrides = FeeService.buildOverrides(feeData, activeChain.gasLimits?.safeExec || 500000);
-
-      const response = await (safeContract as any).execTransaction(
-        tx.to, tx.value, tx.data, 0, 0, 0, 0, ZERO_ADDRESS, ZERO_ADDRESS, signatures, overrides
-      );
-
-      addTransactionRecord({
-        id: Date.now().toString(),
-        chainId: activeChainId,
-        hash: response.hash,
-        status: 'submitted',
-        timestamp: Date.now(),
-        summary: tx.summary
-      });
-
-      // Clear from queue after successful broadcast
-      setPendingSafeTxs((prev: SafePendingTx[]) => prev.filter(p => p.id !== tx.id));
-      setNotification(t('safe.notice_execution_broadcasted'));
-    } catch (e: any) {
-      setError(e.message || t('safe.err_execution_failed'));
-    }
-  };
-
   // Fix: Added implementation for removeOwnerTx
   const removeOwnerTx = async (owner: string, threshold: number) => {
     if (!activeSafeAddress || !provider) return false;
@@ -275,7 +226,7 @@ export const useSafeManager = ({
   };
 
   return { 
-    isDeployingSafe, handleSafeProposal, deploySafe, handleAddSignature, handleExecutePending,
+    isDeployingSafe, handleSafeProposal, deploySafe,
     addOwnerTx, removeOwnerTx, changeThresholdTx
   };
 };

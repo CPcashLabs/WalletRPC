@@ -39,7 +39,6 @@ const chainB: ChainConfig = {
 
 interface SetupOverrides {
   trackedSafes?: Array<{ address: string; name: string; chainId: number }>;
-  pendingSafeTxs?: Array<any>;
   safeDetails?: any;
   activeSafeAddress?: string | null;
 }
@@ -51,9 +50,7 @@ const setupMocks = (activeAccountType: 'EOA' | 'SAFE', overrides: SetupOverrides
     chains: [chainA, chainB],
     setChains: vi.fn(),
     customTokens: {},
-    setCustomTokens: vi.fn(),
-    pendingSafeTxs: overrides.pendingSafeTxs ?? [],
-    setPendingSafeTxs: vi.fn()
+    setCustomTokens: vi.fn()
   };
 
   const stateMock = {
@@ -108,8 +105,6 @@ const setupMocks = (activeAccountType: 'EOA' | 'SAFE', overrides: SetupOverrides
     isDeployingSafe: false,
     handleSafeProposal: vi.fn(async () => true),
     deploySafe: vi.fn(async () => {}),
-    handleAddSignature: vi.fn(async () => {}),
-    handleExecutePending: vi.fn(async () => {}),
     addOwnerTx: vi.fn(async () => true),
     removeOwnerTx: vi.fn(async () => true),
     changeThresholdTx: vi.fn(async () => true)
@@ -186,25 +181,4 @@ describe('useEvmWallet handleSwitchNetwork', () => {
     expect(next).toHaveLength(1);
   });
 
-  it('SAFE nonce 前进时会清理已过期的 pending 提案', () => {
-    const safeAddress = '0x000000000000000000000000000000000000dEaD';
-    const pending = [
-      { id: 'old', chainId: 199, safeAddress, nonce: 1 },
-      { id: 'current', chainId: 199, safeAddress, nonce: 3 },
-      { id: 'other-safe', chainId: 199, safeAddress: '0x000000000000000000000000000000000000beef', nonce: 1 },
-      { id: 'other-chain', chainId: 1, safeAddress, nonce: 1 }
-    ];
-    const { storageMock } = setupMocks('SAFE', {
-      activeSafeAddress: safeAddress,
-      pendingSafeTxs: pending,
-      safeDetails: { owners: [], threshold: 2, nonce: 3 }
-    });
-
-    renderHook(() => useEvmWallet(), { wrapper: LanguageProvider });
-
-    expect(storageMock.setPendingSafeTxs).toHaveBeenCalled();
-    const updater = storageMock.setPendingSafeTxs.mock.calls[0][0] as (prev: typeof pending) => typeof pending;
-    const next = updater(pending);
-    expect(next.map((item) => item.id)).toEqual(['current', 'other-safe', 'other-chain']);
-  });
 });

@@ -70,20 +70,6 @@ export interface TransactionRecord {
   error?: string;
 }
 
-export interface SafePendingTx {
-  id: string;
-  chainId: number;
-  safeAddress: string;
-  to: string;
-  value: string;
-  data: string;
-  nonce: number;
-  safeTxHash: string;
-  signatures: Record<string, string>;
-  summary: string;
-  executor?: string;
-}
-
 export interface SafeDetails {
   owners: string[];
   threshold: number;

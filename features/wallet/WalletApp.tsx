@@ -9,7 +9,6 @@ import { useTranslation } from '../../contexts/LanguageContext';
 import { WalletOnboarding } from './components/WalletOnboarding';
 const WalletDashboard = React.lazy(() => import('./components/WalletDashboard').then(m => ({ default: m.WalletDashboard })));
 const SendForm = React.lazy(() => import('./components/SendForm').then(m => ({ default: m.SendForm })));
-const SafeQueue = React.lazy(() => import('./components/SafeViews').then(m => ({ default: m.SafeQueue })));
 const SafeSettings = React.lazy(() => import('./components/SafeViews').then(m => ({ default: m.SafeSettings })));
 const CreateSafe = React.lazy(() => import('./components/SafeViews').then(m => ({ default: m.CreateSafe })));
 const TrackSafe = React.lazy(() => import('./components/SafeViews').then(m => ({ default: m.TrackSafe })));
@@ -73,8 +72,8 @@ export const WalletApp: React.FC = () => {
     wallet, activeChain, activeAddress, activeChainTokens, activeAccountType, setActiveAccountType, activeSafeAddress, setActiveSafeAddress,
     activeChainId, chains, view, setView, isMenuOpen, setIsMenuOpen, isLoading, isInitialFetchDone, error, errorObject, notification,
     isChainModalOpen, setIsChainModalOpen, isAddTokenModalOpen, setIsAddTokenModalOpen, tokenToEdit, setTokenToEdit, balance, tokenBalances, transactions,
-    safeDetails, pendingSafeTxs, isDeployingSafe, trackedSafes, setTrackedSafes, privateKeyOrPhrase, setPrivateKeyOrPhrase, handleImport,
-    handleSendSubmit, handleAddSignature, handleExecutePending, confirmAddToken, handleUpdateToken, handleRemoveToken, handleSaveChain,
+    safeDetails, isDeployingSafe, trackedSafes, setTrackedSafes, privateKeyOrPhrase, setPrivateKeyOrPhrase, handleImport,
+    handleSendSubmit, confirmAddToken, handleUpdateToken, handleRemoveToken, handleSaveChain,
     handleTrackSafe, handleSwitchNetwork, handleLogout, handleRefreshData, refreshSafeDetails, deploySafe, addOwnerTx, removeOwnerTx, changeThresholdTx, setError
   } = useEvmWallet();
 
@@ -118,18 +117,6 @@ export const WalletApp: React.FC = () => {
       setTimeout(() => { setView('dashboard'); setIsIntroFadingOut(false); setMinTimePassed(false); }, INTRO_FADE_MS);
     }
   }, [view, minTimePassed, isInitialFetchDone, setView, INTRO_FADE_MS]);
-
-  const safePendingCount = React.useMemo(() => {
-    if (!activeSafeAddress || safeDetails?.nonce == null) return 0;
-    const safeLower = activeSafeAddress.toLowerCase();
-    return pendingSafeTxs.filter((tx) => {
-      return (
-        tx.chainId === Number(activeChainId) &&
-        tx.safeAddress.toLowerCase() === safeLower &&
-        tx.nonce === safeDetails.nonce
-      );
-    }).length;
-  }, [activeSafeAddress, safeDetails?.nonce, pendingSafeTxs, activeChainId]);
 
   if (view === 'onboarding' || !wallet) return <WalletOnboarding input={privateKeyOrPhrase} setInput={setPrivateKeyOrPhrase} onImport={onImportWrapper} error={error} isExiting={isOnboardingExiting} />;
   if (view === 'intro_animation') {
@@ -209,14 +196,13 @@ export const WalletApp: React.FC = () => {
             {localNotification && <NotificationToast message={localNotification} onClose={() => setLocalNotification(null)} />}
             {error && <TechAlert type="error" message={error} count={errorObject?.count} onClose={() => setError(null)} />}
 
-            <React.Suspense fallback={<div className="min-h-[320px] bg-white/70 rounded-2xl border border-slate-200" />}>
-            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-               {view === 'dashboard' && <><WalletDashboard balance={balance} activeChain={activeChain} chains={chains} address={activeAddress || ''} isLoading={isLoading} onRefresh={handleRefreshData} onSend={() => setView('send')} activeAccountType={activeAccountType} pendingTxCount={safePendingCount} onViewQueue={() => setView('safe_queue')} onViewSettings={() => setView('settings')} tokens={activeChainTokens} tokenBalances={tokenBalances} onAddToken={() => setIsAddTokenModalOpen(true)} onEditToken={setTokenToEdit} transactions={transactions} /><div className="mt-12 mb-6 text-center opacity-20"><p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.4em] italic">{t('wallet.disclaimer')}</p></div></>}
-               {view === 'send' && <SendForm activeChain={activeChain} tokens={activeChainTokens} balances={{ ...tokenBalances, NATIVE: balance }} activeAccountType={activeAccountType} onSend={handleSendSubmit} onBack={() => setView('dashboard')} onRefresh={handleRefreshData} isLoading={isLoading} transactions={transactions} />}
-               {view === 'safe_queue' && <SafeQueue pendingTxs={pendingSafeTxs} safeDetails={safeDetails} activeChainId={activeChainId} activeSafeAddress={activeSafeAddress} walletAddress={wallet?.address} onSign={handleAddSignature} onExecute={handleExecutePending} onBack={() => setView('dashboard')} />}
-               {view === 'settings' && safeDetails && (
-                 <SafeSettings
-                   safeDetails={safeDetails}
+	            <React.Suspense fallback={<div className="min-h-[320px] bg-white/70 rounded-2xl border border-slate-200" />}>
+	            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+	               {view === 'dashboard' && <><WalletDashboard balance={balance} activeChain={activeChain} chains={chains} address={activeAddress || ''} isLoading={isLoading} onRefresh={handleRefreshData} onSend={() => setView('send')} activeAccountType={activeAccountType} onViewSettings={() => setView('settings')} tokens={activeChainTokens} tokenBalances={tokenBalances} onAddToken={() => setIsAddTokenModalOpen(true)} onEditToken={setTokenToEdit} transactions={transactions} /><div className="mt-12 mb-6 text-center opacity-20"><p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.4em] italic">{t('wallet.disclaimer')}</p></div></>}
+	               {view === 'send' && <SendForm activeChain={activeChain} tokens={activeChainTokens} balances={{ ...tokenBalances, NATIVE: balance }} activeAccountType={activeAccountType} onSend={handleSendSubmit} onBack={() => setView('dashboard')} onRefresh={handleRefreshData} isLoading={isLoading} transactions={transactions} />}
+	               {view === 'settings' && safeDetails && (
+	                 <SafeSettings
+	                   safeDetails={safeDetails}
                    walletAddress={wallet?.address}
                    onRemoveOwner={removeOwnerTx}
                    onAddOwner={addOwnerTx}

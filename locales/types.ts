@@ -101,7 +101,6 @@ export interface I18nSchema {
     err_already_replaced: string;
   };
   safe: {
-    queue_title: string; current_nonce: string; all_clear: string; signatures: string;
     settings_title: string; ownership_matrix: string; consensus: string; append_member: string;
     propose_action: string; adjust_consensus: string; threshold_desc: string;
     deploy_title: string; initial_registry: string; no_owners: string; add_first_owner: string;
@@ -109,8 +108,6 @@ export interface I18nSchema {
     track_title: string; initiate_sync: string; error_empty: string; error_prefix: string;
     error_length: string; error_format: string; sig_required: string; sigs_required: string;
     mod_btn: string;
-    signed_label: string;
-    to_label: string;
     op_constructing: string;
     op_broadcasting: string;
     op_queued: string;
@@ -124,6 +121,7 @@ export interface I18nSchema {
     err_busy: string;
     err_not_owner: string;
     err_proposal_failed: string;
+    err_multisig_queue_unavailable: string;
     err_signing_failed: string;
     err_execution_failed: string;
     err_current_wallet_not_owner: string;

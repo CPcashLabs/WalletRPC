@@ -24,7 +24,7 @@ export const useWalletState = (initialChainId: number) => {
   const [activeChainId, setActiveChainId] = useState<number>(initialChainId);
 
   // UI 表现层状态
-  const [view, setView] = useState<'onboarding' | 'intro_animation' | 'dashboard' | 'send' | 'create_safe' | 'add_safe' | 'safe_queue' | 'settings'>('onboarding');
+  const [view, setView] = useState<'onboarding' | 'intro_animation' | 'dashboard' | 'send' | 'create_safe' | 'add_safe' | 'settings'>('onboarding');
   const [privateKeyOrPhrase, setPrivateKeyOrPhrase] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const ERROR_DISPLAY_MS = 5000;

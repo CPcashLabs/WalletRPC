@@ -18,8 +18,6 @@ interface WalletDashboardProps {
   onRefresh: () => void;
   onSend: () => void;
   activeAccountType: 'EOA' | 'SAFE';
-  pendingTxCount: number;
-  onViewQueue: () => void;
   onViewSettings: () => void;
   tokens: TokenConfig[];
   tokenBalances: Record<string, string>;
@@ -37,8 +35,6 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
   onRefresh,
   onSend,
   activeAccountType,
-  pendingTxCount,
-  onViewQueue,
   onViewSettings,
   tokens,
   tokenBalances,
@@ -121,21 +117,18 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
             </div>
           </div>
           
-          <div className="relative z-10 mt-auto">
-            <div className={`grid gap-4 ${activeAccountType === 'SAFE' ? 'grid-cols-2 md:grid-cols-3' : 'grid-cols-1 max-w-[200px]'}`}>
-              <Button onClick={onSend} className="w-full h-12 text-sm font-black bg-[#0062ff] text-white shadow-lg" icon={<Zap className="w-4 h-4" />}>
-                {t('tx.send_btn')}
-              </Button>
-              {activeAccountType === 'SAFE' && activeChain.chainType !== 'TRON' && (
-                <>
-                  <Button onClick={onViewQueue} variant="secondary" className="w-full h-12 font-black">
-                    {t('safe.queue_title')} {pendingTxCount > 0 && <span className="ml-2 bg-[#0062ff] text-white px-1.5 rounded-sm text-[9px]">{pendingTxCount}</span>}
-                  </Button>
-                  <Button onClick={onViewSettings} variant="outline" className="w-full h-12 font-black uppercase">{t('safe.mod_btn')}</Button>
-                </>
-              )}
-            </div>
-          </div>
+	          <div className="relative z-10 mt-auto">
+	            <div className={`grid gap-4 ${activeAccountType === 'SAFE' ? 'grid-cols-2 max-w-[420px]' : 'grid-cols-1 max-w-[200px]'}`}>
+	              <Button onClick={onSend} className="w-full h-12 text-sm font-black bg-[#0062ff] text-white shadow-lg" icon={<Zap className="w-4 h-4" />}>
+	                {t('tx.send_btn')}
+	              </Button>
+	              {activeAccountType === 'SAFE' && activeChain.chainType !== 'TRON' && (
+	                <>
+	                  <Button onClick={onViewSettings} variant="outline" className="w-full h-12 font-black uppercase">{t('safe.mod_btn')}</Button>
+	                </>
+	              )}
+	            </div>
+	          </div>
         </div>
       </TiltCard>
       

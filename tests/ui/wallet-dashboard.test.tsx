@@ -59,8 +59,6 @@ describe('WalletDashboard UI', () => {
         onRefresh={onRefresh}
         onSend={onSend}
         activeAccountType="EOA"
-        pendingTxCount={0}
-        onViewQueue={vi.fn()}
         onViewSettings={vi.fn()}
         tokens={baseTokens}
         tokenBalances={{ [baseTokens[0].address.toLowerCase()]: '1.23', [baseTokens[1].address.toLowerCase()]: '2.50' }}
@@ -76,9 +74,8 @@ describe('WalletDashboard UI', () => {
     expect(onSend).toHaveBeenCalledTimes(1);
   });
 
-  it('SAFE 模式下显示队列和设置入口，并触发回调', async () => {
+  it('SAFE 模式下显示设置入口，并触发回调', async () => {
     const user = userEvent.setup();
-    const onViewQueue = vi.fn();
     const onViewSettings = vi.fn();
 
     wrap(
@@ -91,8 +88,6 @@ describe('WalletDashboard UI', () => {
         onRefresh={vi.fn()}
         onSend={vi.fn()}
         activeAccountType="SAFE"
-        pendingTxCount={2}
-        onViewQueue={onViewQueue}
         onViewSettings={onViewSettings}
         tokens={baseTokens}
         tokenBalances={{ [baseTokens[0].address.toLowerCase()]: '1.23', [baseTokens[1].address.toLowerCase()]: '2.50' }}
@@ -102,13 +97,10 @@ describe('WalletDashboard UI', () => {
       />
     );
 
-    const queueBtn = screen.getByRole('button', { name: /QUEUE/i });
     const settingsBtn = screen.getByRole('button', { name: /SAFE_MOD|MODIFY/i });
 
-    await user.click(queueBtn);
     await user.click(settingsBtn);
 
-    expect(onViewQueue).toHaveBeenCalledTimes(1);
     expect(onViewSettings).toHaveBeenCalledTimes(1);
   });
 
@@ -126,8 +118,6 @@ describe('WalletDashboard UI', () => {
         onRefresh={vi.fn()}
         onSend={vi.fn()}
         activeAccountType="EOA"
-        pendingTxCount={0}
-        onViewQueue={vi.fn()}
         onViewSettings={vi.fn()}
         tokens={baseTokens}
         tokenBalances={{ [baseTokens[0].address.toLowerCase()]: '1.23', [baseTokens[1].address.toLowerCase()]: '2.50' }}

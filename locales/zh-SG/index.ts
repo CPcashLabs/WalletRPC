@@ -146,10 +146,6 @@ export const zhSG: I18nSchema = {
     err_already_replaced: "交易已被替换或取消。请查看最新交易状态。"
   },
   safe: {
-    queue_title: "交易队列",
-    current_nonce: "当前 Nonce",
-    all_clear: "全部清除。暂无待处理交易。",
-    signatures: "签名状态",
     settings_title: "保险库设置",
     ownership_matrix: "所有权矩阵",
     consensus: "共识机制",
@@ -173,8 +169,6 @@ export const zhSG: I18nSchema = {
     sig_required: "个签名",
     sigs_required: "个签名",
     mod_btn: "修改权限",
-    signed_label: "已签名",
-    to_label: "目标",
     op_constructing: "构建中...",
     op_broadcasting: "广播中...",
     op_queued: "排队中...",
@@ -188,6 +182,7 @@ export const zhSG: I18nSchema = {
     err_busy: "忙碌中...",
     err_not_owner: "当前地址不是所有者",
     err_proposal_failed: "提议失败",
+    err_multisig_queue_unavailable: "阈值 >= 2 的多签需要链下协调（如 Safe Transaction Service 或离线导入/导出）。在 RPC-only 模式下我们不提供可被发现的交易队列。",
     err_signing_failed: "签名失败",
     err_execution_failed: "执行失败",
     err_current_wallet_not_owner: "当前钱包不是 Safe 所有者",

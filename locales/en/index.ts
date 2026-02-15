@@ -146,10 +146,6 @@ export const en: I18nSchema = {
     err_already_replaced: "Transaction was replaced or cancelled. Check your latest transaction state."
   },
   safe: {
-    queue_title: "Transaction Queue",
-    current_nonce: "Current Nonce",
-    all_clear: "All clear. No pending transactions.",
-    signatures: "Signatures",
     settings_title: "Safe Settings",
     ownership_matrix: "Ownership Matrix",
     consensus: "Consensus",
@@ -173,8 +169,6 @@ export const en: I18nSchema = {
     sig_required: "Signature Required",
     sigs_required: "Signatures Required",
     mod_btn: "SAFE_MOD",
-    signed_label: "Signed",
-    to_label: "To",
     op_constructing: "Constructing...",
     op_broadcasting: "Broadcasting...",
     op_queued: "Queued",
@@ -188,6 +182,7 @@ export const en: I18nSchema = {
     err_busy: "Busy...",
     err_not_owner: "Not an owner",
     err_proposal_failed: "Proposal failed",
+    err_multisig_queue_unavailable: "Multisig threshold >= 2 requires off-chain coordination (e.g., Safe Transaction Service or offline import/export). In RPC-only mode we do not provide a discoverable queue.",
     err_signing_failed: "Signing failed",
     err_execution_failed: "Execution failed",
     err_current_wallet_not_owner: "Current wallet is not a Safe owner",
