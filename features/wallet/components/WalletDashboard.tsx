@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { RefreshCw, Copy, Plus, ExternalLink, Clock, Zap } from 'lucide-react';
+import { RefreshCw, Copy, Plus, ExternalLink, Clock, Zap, QrCode, X } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
 import { TiltCard } from '../../../components/ui/TiltCard';
 import { CountUp } from '../../../components/ui/CountUp';
@@ -8,6 +8,7 @@ import { ChainConfig, TokenConfig, TransactionRecord } from '../types';
 import { getExplorerLink } from '../utils';
 import { useTranslation } from '../../../contexts/LanguageContext';
 import { APP_VERSION } from '../../../config/app';
+import QRCode from 'react-qr-code';
 
 interface WalletDashboardProps {
   balance: string;
@@ -44,6 +45,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
 }) => {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
+  const [isQrOpen, setIsQrOpen] = useState(false);
   const getTokenBalance = (token: TokenConfig) => tokenBalances[token.address.toLowerCase()] ?? tokenBalances[token.symbol] ?? '0';
 
   const handleCopy = (e?: React.MouseEvent) => {
@@ -109,13 +111,50 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
             </div>
           </div>
           
-          <div className="relative z-10">
-            <div className="inline-flex max-w-full items-center px-4 py-2.5 bg-slate-50/50 border border-slate-100 rounded-xl cursor-pointer hover:border-[#0062ff]/20 transition-all" onClick={handleCopy}>
-              <div className={`w-2 h-2 rounded-full mr-3 ${copied ? 'bg-[#0062ff]' : 'bg-slate-300'}`}></div>
-              <span className={`text-xs font-mono font-medium truncate tracking-wide ${copied ? 'text-[#0062ff]' : 'text-slate-500'}`}>{address}</span>
-              <Copy className={`w-3.5 h-3.5 ml-3 ${copied ? 'text-[#0062ff]' : 'text-slate-300'}`} />
-            </div>
-          </div>
+	          <div className="relative z-10">
+	            <div className="inline-flex max-w-full items-center px-4 py-2.5 bg-slate-50/50 border border-slate-100 rounded-xl cursor-pointer hover:border-[#0062ff]/20 transition-all" onClick={handleCopy}>
+	              <div className={`w-2 h-2 rounded-full mr-3 ${copied ? 'bg-[#0062ff]' : 'bg-slate-300'}`}></div>
+	              <span className={`text-xs font-mono font-medium truncate tracking-wide ${copied ? 'text-[#0062ff]' : 'text-slate-500'}`}>{address}</span>
+	              <Copy className={`w-3.5 h-3.5 ml-3 ${copied ? 'text-[#0062ff]' : 'text-slate-300'}`} />
+	              <button
+	                type="button"
+	                onClick={(e) => {
+	                  e.stopPropagation();
+	                  setIsQrOpen(true);
+	                }}
+	                className="ml-2 p-1.5 rounded-lg hover:bg-slate-100 text-slate-300 hover:text-slate-700 transition-colors"
+	                aria-label="show-address-qr"
+	              >
+	                <QrCode className="w-4 h-4" />
+	              </button>
+	            </div>
+	          </div>
+
+	          {isQrOpen && (
+	            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+	              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden border border-slate-100">
+	                <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+	                  <div>
+	                    <h3 className="font-bold text-slate-900 text-lg">{t('wallet.address_qr_title')}</h3>
+	                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{t('wallet.address_qr_subtitle')}</p>
+	                    <p className="text-xs text-slate-500 font-mono truncate max-w-[260px]">{address}</p>
+	                  </div>
+	                  <button
+	                    onClick={() => setIsQrOpen(false)}
+	                    className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-500"
+	                    aria-label="close-qr"
+	                  >
+	                    <X className="w-5 h-5" />
+	                  </button>
+	                </div>
+	                <div className="p-6 flex items-center justify-center">
+	                  <div className="bg-white p-4 rounded-2xl border border-slate-100">
+	                    <QRCode value={address} size={220} />
+	                  </div>
+	                </div>
+	              </div>
+	            </div>
+	          )}
           
 	          <div className="relative z-10 mt-auto">
 	            <div className={`grid gap-4 ${activeAccountType === 'SAFE' ? 'grid-cols-2 max-w-[420px]' : 'grid-cols-1 max-w-[200px]'}`}>
