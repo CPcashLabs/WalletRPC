@@ -272,8 +272,10 @@ export const useEvmWallet = () => {
     if (autoDetectingRef.current || isAutoDetectingChain) return;
 
     fetchData(false);
-    if (activeChain.chainType !== 'TRON') txMgr.syncNonce();
-  }, [activeChainId, activeAccountType, activeSafeAddress, wallet, view, activeChain.chainType, isAutoDetectingChain, fetchData, txMgr]);
+    if (activeChain.chainType !== 'TRON' && txMgr.localNonceRef.current === null) {
+      txMgr.syncNonce();
+    }
+  }, [activeChainId, activeAccountType, activeSafeAddress, wallet, view, activeChain.chainType, isAutoDetectingChain, fetchData, txMgr.localNonceRef, txMgr.syncNonce]);
 
   // Mark the intro preflight as done only after the selected chain has completed its first data sync.
   useEffect(() => {

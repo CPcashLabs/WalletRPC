@@ -128,6 +128,8 @@ export const useTransactionManager = ({
    */
   const syncNonce = useCallback(async () => {
     if (!wallet || !provider || activeChain.chainType === 'TRON' || isSyncingRef.current) return;
+    // If we already have a mirrored nonce, don't spam RPC.
+    if (localNonceRef.current !== null) return;
     
     isSyncingRef.current = true;
     try {
