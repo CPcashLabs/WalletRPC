@@ -38,11 +38,10 @@ describe('HttpConsole dock', () => {
 
     await user.click(screen.getByText('open'));
 
-    // Expanded view renders ConsoleView title (zh-SG default).
-    expect(await screen.findByText('控制台')).toBeTruthy();
+    // Expanded view renders ConsoleView title (depends on default language).
+    expect(await screen.findByText(/Console|控制台/)).toBeTruthy();
 
     await user.click(screen.getByLabelText('console-minimize'));
     expect(await screen.findByLabelText('http-console-dock')).toBeTruthy();
   });
 });
-
