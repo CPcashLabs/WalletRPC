@@ -1,13 +1,12 @@
 
 import { useState, useEffect } from 'react';
 import { DEFAULT_CHAINS } from '../config';
-import { ChainConfig, TokenConfig, TrackedSafe, SafePendingTx } from '../types';
+import { ChainConfig, TokenConfig, TrackedSafe } from '../types';
 
 const STORAGE_KEYS = {
   trackedSafes: { current: 'walletrpc_tracked_safes', legacy: 'zerostate_tracked_safes' },
   customChains: { current: 'walletrpc_custom_chains', legacy: 'zerostate_custom_chains' },
-  customTokens: { current: 'walletrpc_custom_tokens', legacy: 'zerostate_custom_tokens' },
-  pendingSafeTxs: { current: 'walletrpc_pending_safe_txs', legacy: 'zerostate_pending_safe_txs' }
+  customTokens: { current: 'walletrpc_custom_tokens', legacy: 'zerostate_custom_tokens' }
 } as const;
 
 /**
@@ -21,7 +20,6 @@ export const useWalletStorage = () => {
   const [trackedSafes, setTrackedSafes] = useState<TrackedSafe[]>([]);
   const [chains, setChains] = useState<ChainConfig[]>(DEFAULT_CHAINS);
   const [customTokens, setCustomTokens] = useState<Record<number, TokenConfig[]>>({});
-  const [pendingSafeTxs, setPendingSafeTxs] = useState<SafePendingTx[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
   const safeGetItem = (key: string): string | null => {
@@ -135,10 +133,9 @@ export const useWalletStorage = () => {
       setCustomTokens(savedTokens as Record<number, TokenConfig[]>);
     }
 
-    const savedSafeTxs = readWithMigration<unknown>(STORAGE_KEYS.pendingSafeTxs, []);
-    if (Array.isArray(savedSafeTxs) && savedSafeTxs.length > 0) {
-      setPendingSafeTxs(savedSafeTxs as SafePendingTx[]);
-    }
+    // 清理历史遗留的多签“本地队列”数据（该页面已移除，避免误导与存储膨胀）。
+    safeRemoveItem('walletrpc_pending_safe_txs');
+    safeRemoveItem('zerostate_pending_safe_txs');
 
     setHydrated(true);
   }, []);
@@ -164,11 +161,5 @@ export const useWalletStorage = () => {
      safeRemoveItem(STORAGE_KEYS.customTokens.legacy);
   }, [customTokens, hydrated]);
 
-  useEffect(() => {
-     if (!hydrated) return;
-     safeSetItem(STORAGE_KEYS.pendingSafeTxs.current, JSON.stringify(pendingSafeTxs));
-     safeRemoveItem(STORAGE_KEYS.pendingSafeTxs.legacy);
-  }, [pendingSafeTxs, hydrated]);
-
-  return { trackedSafes, setTrackedSafes, chains, setChains, customTokens, setCustomTokens, pendingSafeTxs, setPendingSafeTxs };
+  return { trackedSafes, setTrackedSafes, chains, setChains, customTokens, setCustomTokens };
 };
