@@ -24,7 +24,7 @@ describe('LanguageContext', () => {
   });
 
   it('优先从 localStorage 恢复语言配置', async () => {
-    localStorage.setItem('nexus_lang', 'zh-SG');
+    localStorage.setItem('walletrpc_lang', 'zh-SG');
     const { result } = renderHook(() => useTranslation(), { wrapper });
 
     await waitFor(() => {
@@ -34,7 +34,19 @@ describe('LanguageContext', () => {
     expect(result.current.isSG).toBe(true);
   });
 
+  it('兼容旧 key：可从 nexus_lang 恢复并迁移到新 key', async () => {
+    localStorage.setItem('nexus_lang', 'zh-SG');
+    const { result } = renderHook(() => useTranslation(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.language).toBe('zh-SG');
+    });
+    expect(localStorage.getItem('walletrpc_lang')).toBe('zh-SG');
+    expect(localStorage.getItem('nexus_lang')).toBeNull();
+  });
+
   it('无持久化配置时会按浏览器语言回退到中文', async () => {
+    localStorage.removeItem('walletrpc_lang');
     localStorage.removeItem('nexus_lang');
     Object.defineProperty(window.navigator, 'language', {
       configurable: true,
@@ -59,7 +71,8 @@ describe('LanguageContext', () => {
       expect(result.current.language).toBe('zh-SG');
     });
 
-    expect(localStorage.getItem('nexus_lang')).toBe('zh-SG');
+    expect(localStorage.getItem('walletrpc_lang')).toBe('zh-SG');
+    expect(localStorage.getItem('nexus_lang')).toBeNull();
     expect(result.current.t('wallet.title')).toBe('Wallet RPC');
     expect(result.current.t('non.exist.key')).toBe('non.exist.key');
   });

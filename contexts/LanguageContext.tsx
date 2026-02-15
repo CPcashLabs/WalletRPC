@@ -21,6 +21,9 @@ interface LanguageContextType {
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
+const LANGUAGE_STORAGE_KEY = 'walletrpc_lang';
+const LEGACY_LANGUAGE_STORAGE_KEY = 'nexus_lang';
+
 const safeLocalStorageGet = (key: string): string | null => {
   try {
     if (typeof window === 'undefined' || !window.localStorage) return null;
@@ -44,9 +47,19 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   useEffect(() => {
     // 逻辑：优先读取用户持久化配置，实现状态锁定
-    const savedLang = safeLocalStorageGet('nexus_lang') as Language | null;
+    const savedLang = safeLocalStorageGet(LANGUAGE_STORAGE_KEY) as Language | null;
+    const legacyLang = safeLocalStorageGet(LEGACY_LANGUAGE_STORAGE_KEY) as Language | null;
     if (savedLang) {
       setLanguage(savedLang);
+    } else if (legacyLang) {
+      // 兼容旧 key，并做一次性迁移
+      setLanguage(legacyLang);
+      safeLocalStorageSet(LANGUAGE_STORAGE_KEY, legacyLang);
+      try {
+        window.localStorage.removeItem(LEGACY_LANGUAGE_STORAGE_KEY);
+      } catch {
+        // ignore
+      }
     } else {
       const browserLang = navigator.language.toLowerCase();
       if (browserLang.startsWith('zh')) setLanguage('zh-SG');
@@ -55,7 +68,12 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const handleSetLanguage = useCallback((lang: Language) => {
     setLanguage(lang);
-    safeLocalStorageSet('nexus_lang', lang);
+    safeLocalStorageSet(LANGUAGE_STORAGE_KEY, lang);
+    try {
+      window.localStorage.removeItem(LEGACY_LANGUAGE_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
   }, []);
 
   /**
