@@ -147,6 +147,48 @@ describe('useTransactionManager', () => {
     vi.useRealTimers();
   });
 
+  it('receipt 返回 status=0 时应标记失败并给出本地化错误提示', async () => {
+    vi.useFakeTimers();
+    const getTransactionReceipt = vi.fn(async () => ({ status: 0 }));
+    const provider = { getTransactionReceipt } as any;
+
+    const { result } = renderHook(() =>
+      useTransactionManager({
+        wallet: null,
+        tronPrivateKey: null,
+        provider,
+        activeChain: evmChain,
+        activeChainId: 199,
+        activeAccountType: 'EOA',
+        fetchData: vi.fn(),
+        setError: vi.fn(),
+        handleSafeProposal: vi.fn()
+      })
+    , { wrapper: LanguageProvider });
+
+    act(() => {
+      result.current.addTransactionRecord({
+        id: 'tx-failed',
+        chainId: 199,
+        hash: '0x' + '5'.repeat(64),
+        status: 'submitted',
+        timestamp: Date.now(),
+        summary: 'Pending failed'
+      });
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getTransactionReceipt).toHaveBeenCalledTimes(1);
+    expect(result.current.transactions[0].status).toBe('failed');
+    expect(result.current.transactions[0].error).toBeTruthy();
+    vi.useRealTimers();
+  });
+
   it('长时间未确认的 pending 交易会超时并停止轮询', async () => {
     vi.useFakeTimers();
     const getTransactionReceipt = vi.fn(async () => null);

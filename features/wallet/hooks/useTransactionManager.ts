@@ -292,7 +292,12 @@ export const useTransactionManager = ({
       setTransactions((prev) =>
         prev.map((tx) =>
           updateMap.has(tx.id)
-            ? { ...tx, status: updateMap.get(tx.id)!, error: undefined }
+            ? {
+                ...tx,
+                status: updateMap.get(tx.id)!,
+                // receipt.status === 0 或 TRON info.success === false 时应给出稳定可本地化的错误提示
+                error: updateMap.get(tx.id)! === 'failed' ? t('tx.err_transaction_failed') : undefined
+              }
             : tx
         )
       );
