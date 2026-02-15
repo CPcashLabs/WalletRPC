@@ -16,6 +16,7 @@ const ChainModal = React.lazy(() => import('./components/Modals').then(m => ({ d
 const AddTokenModal = React.lazy(() => import('./components/Modals').then(m => ({ default: m.AddTokenModal })));
 const EditTokenModal = React.lazy(() => import('./components/Modals').then(m => ({ default: m.EditTokenModal })));
 const ParticleIntro = React.lazy(() => import('../../components/ui/ParticleIntro').then(m => ({ default: m.ParticleIntro })));
+const ConsoleView = React.lazy(() => import('./components/ConsoleView').then(m => ({ default: m.ConsoleView })));
 
 const TechAlert: React.FC<{ type: 'error' | 'success'; message: string; count?: number; onClose?: () => void }> = ({ type, message, count, onClose }) => (
   <div
@@ -200,6 +201,7 @@ export const WalletApp: React.FC = () => {
 	            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
 	               {view === 'dashboard' && <><WalletDashboard balance={balance} activeChain={activeChain} chains={chains} address={activeAddress || ''} isLoading={isLoading} onRefresh={handleRefreshData} onSend={() => setView('send')} activeAccountType={activeAccountType} onViewSettings={() => setView('settings')} tokens={activeChainTokens} tokenBalances={tokenBalances} onAddToken={() => setIsAddTokenModalOpen(true)} onEditToken={setTokenToEdit} transactions={transactions} /><div className="mt-12 mb-6 text-center opacity-20"><p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.4em] italic">{t('wallet.disclaimer')}</p></div></>}
 	               {view === 'send' && <SendForm activeChain={activeChain} tokens={activeChainTokens} balances={{ ...tokenBalances, NATIVE: balance }} activeAccountType={activeAccountType} onSend={handleSendSubmit} onBack={() => setView('dashboard')} onRefresh={handleRefreshData} isLoading={isLoading} transactions={transactions} />}
+	               {view === 'console' && <ConsoleView onBack={() => setView('dashboard')} />}
 	               {view === 'settings' && safeDetails && (
 	                 <SafeSettings
 	                   safeDetails={safeDetails}
@@ -218,11 +220,11 @@ export const WalletApp: React.FC = () => {
          </div>
       </main>
 
-      <React.Suspense fallback={null}>
-        <ChainModal isOpen={isChainModalOpen} onClose={() => setIsChainModalOpen(false)} initialConfig={activeChain} onSave={handleSaveChain} chains={chains} onSwitchNetwork={handleSwitchNetwork} />
-        <AddTokenModal isOpen={isAddTokenModalOpen} onClose={() => setIsAddTokenModalOpen(false)} onImport={confirmAddToken} isImporting={false} />
-        <EditTokenModal token={tokenToEdit} onClose={() => setTokenToEdit(null)} onSave={handleUpdateToken} onDelete={handleRemoveToken} />
-      </React.Suspense>
+	      <React.Suspense fallback={null}>
+	        <ChainModal isOpen={isChainModalOpen} onClose={() => setIsChainModalOpen(false)} initialConfig={activeChain} onSave={handleSaveChain} chains={chains} onSwitchNetwork={handleSwitchNetwork} onOpenConsole={() => setView('console')} />
+	        <AddTokenModal isOpen={isAddTokenModalOpen} onClose={() => setIsAddTokenModalOpen(false)} onImport={confirmAddToken} isImporting={false} />
+	        <EditTokenModal token={tokenToEdit} onClose={() => setTokenToEdit(null)} onSave={handleUpdateToken} onDelete={handleRemoveToken} />
+	      </React.Suspense>
     </div>
   );
 };

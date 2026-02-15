@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Trash2, Github, ExternalLink, AlertCircle, Search, Server, ChevronDown, ChevronUp, Globe, Compass } from 'lucide-react';
+import { X, Trash2, Github, ExternalLink, AlertCircle, Search, Server, ChevronDown, ChevronUp, Globe, Compass, Terminal } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
 import { ChainConfig, TokenConfig } from '../types';
 import { getActiveExplorer } from '../utils';
@@ -17,6 +17,7 @@ interface ChainModalProps {
   chains: ChainConfig[];
   onSwitchNetwork: (chainId: number) => void;
   onSave: (config: ChainConfig) => void | Promise<void>;
+  onOpenConsole?: () => void;
 }
 
 export const ChainModal: React.FC<ChainModalProps> = ({ 
@@ -25,7 +26,8 @@ export const ChainModal: React.FC<ChainModalProps> = ({
   initialConfig, 
   chains,
   onSwitchNetwork,
-  onSave 
+  onSave,
+  onOpenConsole
 }) => {
   const { t } = useTranslation();
   const [config, setConfig] = useState<Partial<ChainConfig>>({});
@@ -187,8 +189,30 @@ export const ChainModal: React.FC<ChainModalProps> = ({
             </div>
           </div>
 
-	          <div>
-	             <button onClick={() => setShowAdvanced(!showAdvanced)} className="flex items-center justify-between w-full py-2 text-slate-500 hover:text-slate-800 transition-colors">
+          <div className="space-y-3">
+            <div className="flex items-center space-x-2 text-indigo-600">
+              <Terminal className="w-5 h-5" />
+              <span className="font-bold text-sm uppercase tracking-wide">{t('settings.console')}</span>
+            </div>
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+              <div className="text-xs text-slate-500 leading-relaxed">
+                {t('settings.console_desc')}
+              </div>
+              <Button
+                variant="outline"
+                className="w-full py-2.5"
+                onClick={() => {
+                  if (onOpenConsole) onOpenConsole();
+                  onClose();
+                }}
+              >
+                {t('settings.open_console')}
+              </Button>
+            </div>
+          </div>
+
+		          <div>
+		             <button onClick={() => setShowAdvanced(!showAdvanced)} className="flex items-center justify-between w-full py-2 text-slate-500 hover:text-slate-800 transition-colors">
                 <div className="flex items-center space-x-2"><Search className="w-4 h-4" /><span className="text-xs font-bold uppercase tracking-wide">{t('settings.tech_details')}</span></div>
                 {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
              </button>
