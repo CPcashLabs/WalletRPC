@@ -64,6 +64,38 @@ export const useTransactionManager = ({
 }: UseTransactionManagerParams) => {
   const { t } = useTranslation();
 
+  type TxMgrErrorCode =
+    | 'wallet_provider_not_ready'
+    | 'safe_manager_not_ready'
+    | 'tron_private_key_missing'
+    | 'tron_broadcast_failed';
+
+  class TxMgrError extends Error {
+    code: TxMgrErrorCode;
+    detail?: string;
+    constructor(code: TxMgrErrorCode, detail?: string) {
+      super(code);
+      this.code = code;
+      this.detail = detail;
+    }
+  }
+
+  const toUserError = (err: unknown): string => {
+    if (err instanceof TxMgrError) {
+      if (err.code === 'wallet_provider_not_ready') return t('tx.err_wallet_provider_not_ready');
+      if (err.code === 'safe_manager_not_ready') return t('tx.err_safe_manager_not_ready');
+      if (err.code === 'tron_private_key_missing') return t('tx.err_tron_private_key_missing');
+      if (err.code === 'tron_broadcast_failed') {
+        const base = t('tx.err_tron_broadcast_failed');
+        const detail = (err.detail || '').trim();
+        if (!detail) return base;
+        const clipped = detail.length > 120 ? `${detail.slice(0, 120)}...` : detail;
+        return `${base}: ${clipped}`;
+      }
+    }
+    return handleTxError(err, t);
+  };
+
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const postConfirmRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollingMetaRef = useRef<Map<string, { startedAt: number; attempts: number; nextPollAt: number }>>(new Map());
@@ -278,7 +310,7 @@ export const useTransactionManager = ({
   const handleSendSubmit = async (data: TransactionInput): Promise<ProcessResult> => {
     try {
       const isTron = activeChain.chainType === 'TRON';
-      if (!wallet || (!provider && !isTron)) throw new Error(t('tx.err_wallet_provider_not_ready'));
+      if (!wallet || (!provider && !isTron)) throw new TxMgrError('wallet_provider_not_ready');
 
       const displaySymbol = data.asset === 'NATIVE' ? activeChain.currencySymbol : data.asset;
       const token = data.assetAddress
@@ -289,7 +321,7 @@ export const useTransactionManager = ({
       // --- [特殊路径：Safe 多签提议] ---
       // 此处完全不占用 EOA 的 Nonce，通过 SafeManager 的 Batch 逻辑实现 0 冗余 RPC
       if (activeAccountType === 'SAFE') {
-        if (!handleSafeProposal) throw new Error(t('tx.err_safe_manager_not_ready'));
+        if (!handleSafeProposal) throw new TxMgrError('safe_manager_not_ready');
         
         let targetAddress = data.recipient;
         let value = 0n;
@@ -311,7 +343,7 @@ export const useTransactionManager = ({
       // --- [路径：波场原生/代币转账] ---
       // 优化：TronService 使用自定义构建逻辑，仅产生 1 次广播请求，不预检 Nonce。
       if (isTron) {
-        if (!tronPrivateKey) throw new Error(t('tx.err_tron_private_key_missing'));
+        if (!tronPrivateKey) throw new TxMgrError('tron_private_key_missing');
         const decimals = data.asset === 'NATIVE' ? 6 : (token?.decimals || Number(data.assetDecimals ?? 6));
         const amountSun = ethers.parseUnits(data.amount || "0", decimals);
 
@@ -325,7 +357,7 @@ export const useTransactionManager = ({
           setTransactions(prev => [{ id, chainId: Number(activeChainId), hash: result.txid, status: 'submitted', timestamp: Date.now(), summary: `${t('tx.summary_send')} ${data.amount} ${displaySymbol}` }, ...prev]);
           return { success: true, hash: result.txid };
         } else {
-          throw new Error(result.error || t('tx.err_tron_broadcast_failed'));
+          throw new TxMgrError('tron_broadcast_failed', result.error || '');
         }
       }
 
@@ -372,7 +404,7 @@ export const useTransactionManager = ({
       if (errorMsg.includes("nonce") || errorMsg.includes("replacement transaction")) {
         localNonceRef.current = null;
       }
-      const error = handleTxError(e, t);
+      const error = toUserError(e);
       setError(error);
       return { success: false, error };
     }
