@@ -37,18 +37,21 @@ class DeduplicatingJsonRpcProvider extends ethers.JsonRpcProvider {
   }
 
   async send(method: string, params: Array<any>): Promise<any> {
-    // 只有查询类方法值得缓存
+    // 只有查询类方法值得缓存/去重
     // 移除了 eth_chainId，因为 Chain ID 在配置中已固定
-    const cacheableMethods = [
+    // 注意：余额/nonce 属于强时序数据，只做并发去重，不做时间片缓存，避免强制刷新拿到旧值。
+    const resCacheMethods = [
       'eth_gasPrice', 
       'eth_maxPriorityFeePerGas', 
       'eth_getBlockByNumber', 
-      'eth_feeHistory',
+      'eth_feeHistory'
+    ];
+    const inflightOnlyMethods = [
       'eth_getBalance',
       'eth_getTransactionCount'
     ];
 
-    if (!cacheableMethods.includes(method)) {
+    if (!resCacheMethods.includes(method) && !inflightOnlyMethods.includes(method)) {
       return super.send(method, params);
     }
 
@@ -57,9 +60,11 @@ class DeduplicatingJsonRpcProvider extends ethers.JsonRpcProvider {
     this.cleanupCache(now);
 
     // 1. 检查结果缓存 (解决 ID 不同但内容相同的重复请求)
-    const cached = this._resCache.get(key);
-    if (cached && cached.expiry > now) {
-      return cached.result;
+    if (resCacheMethods.includes(method)) {
+      const cached = this._resCache.get(key);
+      if (cached && cached.expiry > now) {
+        return cached.result;
+      }
     }
 
     // 2. 检查并发锁定 (解决同一瞬间的请求)
@@ -70,12 +75,14 @@ class DeduplicatingJsonRpcProvider extends ethers.JsonRpcProvider {
 
     // 3. 执行真正的网络请求
     const promise = super.send(method, params).then(result => {
-      // 存入短期结果缓存
-      this._resCache.set(key, { 
-        result, 
-        expiry: Date.now() + this.CACHE_TTL 
-      });
-      this.cleanupCache(Date.now());
+      if (resCacheMethods.includes(method)) {
+        // 存入短期结果缓存
+        this._resCache.set(key, { 
+          result, 
+          expiry: Date.now() + this.CACHE_TTL 
+        });
+        this.cleanupCache(Date.now());
+      }
       return result;
     }).finally(() => {
       // 释放并发锁定
