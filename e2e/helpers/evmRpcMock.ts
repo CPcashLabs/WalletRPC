@@ -185,40 +185,6 @@ export const installBttcRpcMock = async (page: Page) => {
   });
 };
 
-export const installBttcRpcHttpErrorMock = async (page: Page, status: number = 429) => {
-  await page.route('**/*', async (route) => {
-    const request = route.request();
-    const url = request.url();
-    if (!url.includes(BTTC_RPC_HOST)) {
-      await route.continue();
-      return;
-    }
-
-    if (request.method() === 'OPTIONS') {
-      await route.fulfill({
-        status: 204,
-        headers: {
-          'access-control-allow-origin': '*',
-          'access-control-allow-methods': 'POST, OPTIONS',
-          'access-control-allow-headers': 'content-type'
-        }
-      });
-      return;
-    }
-
-    if (request.method() !== 'POST') {
-      await route.continue();
-      return;
-    }
-
-    await route.fulfill({
-      status,
-      contentType: 'application/json',
-      body: JSON.stringify({ error: `mock http ${status}` })
-    });
-  });
-};
-
 export const installBttcRpcJsonRpcErrorMock = async (
   page: Page,
   code: number = -32005,
