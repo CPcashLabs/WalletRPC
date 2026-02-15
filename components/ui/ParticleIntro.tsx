@@ -4,11 +4,10 @@ import { BrandLogo } from './BrandLogo';
 import { useTranslation } from '../../contexts/LanguageContext';
 
 interface ParticleIntroProps {
-  onComplete?: () => void;
   fadeOut?: boolean;
 }
 
-export const ParticleIntro: React.FC<ParticleIntroProps> = ({ onComplete, fadeOut = false }) => {
+export const ParticleIntro: React.FC<ParticleIntroProps> = ({ fadeOut = false }) => {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);

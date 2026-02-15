@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { RefreshCw, Copy, Plus, ExternalLink, Clock, Check, Zap } from 'lucide-react';
+import { RefreshCw, Copy, Plus, ExternalLink, Clock, Zap } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
 import { TiltCard } from '../../../components/ui/TiltCard';
 import { CountUp } from '../../../components/ui/CountUp';
@@ -149,7 +149,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
           )}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
-          {tokens.map((t_item, idx) => (
+          {tokens.map((t_item) => (
             <div key={t_item.address} onClick={() => t_item.isCustom && onEditToken(t_item)} className="group flex justify-between items-center p-4 rounded-2xl bg-white border border-slate-200 hover:border-[#0062ff]/30 hover:shadow-lg transition-all cursor-pointer shadow-sm">
               <div className="flex items-center min-w-0">
                 <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-sm font-black text-[#0062ff] mr-4 group-hover:scale-105 transition-transform">{t_item.symbol[0]}</div>

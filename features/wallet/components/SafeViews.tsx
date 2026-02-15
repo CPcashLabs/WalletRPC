@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { List, Key, Zap, Trash2, ArrowLeft, Users, Shield, Plus, Clock, AlertCircle, Loader2, CheckCircle2, ShieldOff, X, ExternalLink, ChevronDown, Search, Activity } from 'lucide-react';
+import { List, Key, Zap, Trash2, ArrowLeft, Users, Shield, Plus, Clock, AlertCircle, Loader2, CheckCircle2, ShieldOff, X, ChevronDown, Activity } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
 import { SafePendingTx, SafeDetails } from '../types';
 import { ethers } from 'ethers';
