@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from './LanguageContext';
 import { ConsoleView } from '../features/wallet/components/ConsoleView';
+import { Terminal } from 'lucide-react';
 
 export type HttpConsoleCategory = 'rpc' | 'http';
 
@@ -134,32 +135,27 @@ const decodeLastAddressParam = (data: unknown): string | null => {
 };
 
 const describeEthCall = (call: any, t: (k: string) => string): string => {
-  const to = shortHex(call?.to, 6, 4);
   const data = call?.data;
   const sel = getSelector(data);
 
   // Safe: getOwners()
   if (sel === '0xa0e67e2b') {
-    return to ? concatIntent(t('console.intent_safe_owners'), to) : t('console.intent_safe_owners');
+    return t('console.intent_safe_owners');
   }
   // Safe: getThreshold()
   if (sel === '0xe75235b8') {
-    return to ? concatIntent(t('console.intent_safe_threshold'), to) : t('console.intent_safe_threshold');
+    return t('console.intent_safe_threshold');
   }
   // Safe: nonce()
   if (sel === '0xaffed0e0') {
-    return to ? concatIntent(t('console.intent_safe_nonce'), to) : t('console.intent_safe_nonce');
+    return t('console.intent_safe_nonce');
   }
 
   // ERC20: balanceOf(address)
   if (sel === '0x70a08231') {
-    const owner = shortHex(decodeLastAddressParam(data), 6, 4);
-    if (to && owner) return `${t('console.intent_token_balance')} ${owner} @ ${to}`;
-    if (to) return concatIntent(t('console.intent_token_balance'), to);
     return t('console.intent_token_balance');
   }
 
-  if (to) return concatIntent(t('console.intent_call_contract'), to);
   return t('console.intent_call_contract');
 };
 
@@ -168,27 +164,21 @@ const describeRpcCall = (rpcMethod: string | undefined, params: unknown, t: (k: 
   const p = Array.isArray(params) ? params : [];
 
   if (rpcMethod === 'eth_getBalance') {
-    const addr = shortHex(p[0], 6, 4);
-    return addr ? concatIntent(t('console.intent_get_balance'), addr) : t('console.intent_get_balance');
+    return t('console.intent_get_balance');
   }
   if (rpcMethod === 'eth_getTransactionCount') {
-    const addr = shortHex(p[0], 6, 4);
-    return addr ? concatIntent(t('console.intent_get_nonce'), addr) : t('console.intent_get_nonce');
+    return t('console.intent_get_nonce');
   }
   if (rpcMethod === 'eth_getTransactionReceipt') {
-    const h = shortHex(p[0], 10, 6);
-    return h ? concatIntent(t('console.intent_get_receipt'), h) : t('console.intent_get_receipt');
+    return t('console.intent_get_receipt');
   }
   if (rpcMethod === 'eth_sendRawTransaction') {
     return t('console.intent_broadcast_tx');
   }
   if (rpcMethod === 'eth_getCode') {
-    const addr = shortHex(p[0], 6, 4);
-    return addr ? concatIntent(t('console.intent_get_code'), addr) : t('console.intent_get_code');
+    return t('console.intent_get_code');
   }
   if (rpcMethod === 'eth_getBlockByNumber') {
-    const tag = typeof p[0] === 'string' ? p[0] : null;
-    if (tag) return concatIntent(t('console.intent_get_block'), tag);
     return t('console.intent_get_block');
   }
   if (rpcMethod === 'eth_call') {
@@ -196,9 +186,7 @@ const describeRpcCall = (rpcMethod: string | undefined, params: unknown, t: (k: 
     return describeEthCall(call, t);
   }
   if (rpcMethod === 'eth_estimateGas') {
-    const call = p[0];
-    const to = shortHex((call as any)?.to, 6, 4);
-    return to ? concatIntent(t('console.intent_estimate_gas'), to) : t('console.intent_estimate_gas');
+    return t('console.intent_estimate_gas');
   }
 
   // Fallback to static semantic descriptions.
@@ -564,46 +552,40 @@ const HttpConsoleDock: React.FC = () => {
   const { enabled, setEnabled, expanded, setExpanded, events, open } = useHttpConsole();
 
   // Show the dock if enabled or expanded (expanded implies enabled, but keep it robust).
-  const visible = enabled || expanded;
+  // Keep the entry visible if it already captured events (so logs can be inspected later).
+  const visible = enabled || expanded || events.length > 0;
   const latest = events[0];
 
   if (!visible) return null;
 
   return (
     <div
-      className="fixed left-0 right-0 z-[90] px-3 sm:px-4 pb-3 pointer-events-none"
-      style={{ bottom: 'calc(0.5rem + var(--safe-bottom))' }}
+      className="fixed z-[90] pointer-events-none"
+      style={{
+        right: 'calc(0.75rem + var(--safe-right))',
+        bottom: 'calc(0.75rem + var(--safe-bottom))'
+      }}
     >
-      <div className="max-w-5xl mx-auto pointer-events-auto">
+      <div className="pointer-events-auto">
         {!expanded ? (
           <button
             type="button"
-            aria-label="http-console-dock"
+            aria-label="http-console-fab"
             onClick={() => open()}
-            className="w-full rounded-2xl border border-slate-200 bg-white/90 backdrop-blur-md shadow-xl px-4 py-3 flex items-center justify-between gap-3 hover:bg-white transition-colors"
+            className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-2xl border border-slate-200 bg-white/90 backdrop-blur-md shadow-xl hover:bg-white transition-colors flex items-center justify-center text-slate-700"
+            title={t('console.dock_hint')}
           >
-            <div className="min-w-0">
-              <div className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-400">
-                {t('console.dock_title')}
-              </div>
-              <div className="text-xs font-black text-slate-900 truncate">
-                {latest?.action || t('console.dock_empty')}
-              </div>
-              <div className="text-[10px] text-slate-400 font-mono truncate">
-                {latest ? `${latest.method} ${latest.host}` : t('console.dock_hint')}
-              </div>
-            </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <span className="text-[10px] font-black px-2 py-1 rounded-full bg-slate-900 text-white">
-                {events.length}
-              </span>
-              <span className="text-[10px] font-black uppercase tracking-widest text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-1 rounded-full">
-                {t('console.expand')}
-              </span>
-            </div>
+            <Terminal className="w-5 h-5" />
+            <span className="absolute -top-2 -left-2 min-w-6 h-6 px-1 rounded-full bg-slate-900 text-white text-[10px] font-black flex items-center justify-center border border-white">
+              {events.length}
+            </span>
           </button>
         ) : (
-          <div className="rounded-2xl border border-slate-200 bg-white/95 backdrop-blur-md shadow-2xl overflow-hidden">
+          <div
+            className="rounded-2xl border border-slate-200 bg-white/95 backdrop-blur-md shadow-2xl overflow-hidden"
+            style={{ width: 'min(92vw, 460px)' }}
+            aria-label="http-console-panel"
+          >
             <div className="max-h-[70vh] overflow-hidden">
               <ConsoleView mode="dock" onMinimize={() => setExpanded(false)} />
             </div>

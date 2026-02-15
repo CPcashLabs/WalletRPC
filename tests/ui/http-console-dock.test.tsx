@@ -34,7 +34,7 @@ describe('HttpConsole dock', () => {
       </LanguageProvider>
     );
 
-    expect(screen.queryByLabelText('http-console-dock')).toBeNull();
+    expect(screen.queryByLabelText('http-console-fab')).toBeNull();
 
     await user.click(screen.getByText('open'));
 
@@ -42,7 +42,7 @@ describe('HttpConsole dock', () => {
     expect(await screen.findByText(/Console|控制台/)).toBeTruthy();
 
     await user.click(screen.getByLabelText('console-minimize'));
-    expect(await screen.findByLabelText('http-console-dock')).toBeTruthy();
+    expect(await screen.findByLabelText('http-console-fab')).toBeTruthy();
   });
 
   it('batch RPC 应拆分为多条语义化请求', async () => {

@@ -3,11 +3,64 @@ import { ArrowLeft, Filter, Trash2, Server, Activity, Globe } from 'lucide-react
 import { Button } from '../../../components/ui/Button';
 import { useTranslation } from '../../../contexts/LanguageContext';
 import { useHttpConsole } from '../../../contexts/HttpConsoleContext';
+import { ethers } from 'ethers';
 
 const fmtMs = (n: number | undefined): string => {
   if (typeof n !== 'number' || !Number.isFinite(n)) return '-';
   if (n < 1000) return `${Math.round(n)}ms`;
   return `${(n / 1000).toFixed(2)}s`;
+};
+
+const getRpcResultHex = (responseBody: unknown): string | null => {
+  if (!responseBody) return null;
+  if (typeof responseBody === 'object' && responseBody && 'result' in (responseBody as any)) {
+    const r = (responseBody as any).result;
+    return typeof r === 'string' && r.startsWith('0x') ? r : null;
+  }
+  return null;
+};
+
+const getEthCallSelector = (requestBody: unknown): string | null => {
+  if (!requestBody || typeof requestBody !== 'object') return null;
+  const params = (requestBody as any).params;
+  if (!Array.isArray(params) || !params[0] || typeof params[0] !== 'object') return null;
+  const data = (params[0] as any).data;
+  if (typeof data !== 'string') return null;
+  const s = data.trim().toLowerCase();
+  if (!s.startsWith('0x') || s.length < 10) return null;
+  return s.slice(0, 10);
+};
+
+const tryDecodeSafeOwnersCount = (requestBody: unknown, responseBody: unknown): number | null => {
+  // Safe getOwners(): selector 0xa0e67e2b, returns address[]
+  const sel = getEthCallSelector(requestBody);
+  if (sel !== '0xa0e67e2b') return null;
+  const hex = getRpcResultHex(responseBody);
+  if (!hex) return null;
+  try {
+    const coder = ethers.AbiCoder.defaultAbiCoder();
+    const decoded = coder.decode(['address[]'], hex);
+    const owners = decoded?.[0] as string[] | undefined;
+    if (!Array.isArray(owners)) return null;
+    return owners.length;
+  } catch {
+    return null;
+  }
+};
+
+const tryDecodeSafeUint = (selector: string, requestBody: unknown, responseBody: unknown): bigint | null => {
+  const sel = getEthCallSelector(requestBody);
+  if (sel !== selector) return null;
+  const hex = getRpcResultHex(responseBody);
+  if (!hex) return null;
+  try {
+    const coder = ethers.AbiCoder.defaultAbiCoder();
+    const decoded = coder.decode(['uint256'], hex);
+    const v = decoded?.[0] as bigint | undefined;
+    return typeof v === 'bigint' ? v : null;
+  } catch {
+    return null;
+  }
 };
 
 const safeStringify = (v: unknown): string => {
@@ -215,6 +268,38 @@ export const ConsoleView: React.FC<{ onBack?: () => void; onMinimize?: () => voi
                     <div className="text-sm font-mono text-slate-900 mt-1">{fmtMs(selected.durationMs)}</div>
                   </div>
                 </div>
+
+                {(() => {
+                  const ownersCount = tryDecodeSafeOwnersCount(selected.requestBody, selected.responseBody);
+                  const threshold = tryDecodeSafeUint('0xe75235b8', selected.requestBody, selected.responseBody);
+                  const nonce = tryDecodeSafeUint('0xaffed0e0', selected.requestBody, selected.responseBody);
+                  if (ownersCount == null && threshold == null && nonce == null) return null;
+                  return (
+                    <div className="grid grid-cols-2 gap-3">
+                      {ownersCount != null && (
+                        <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+                          <div className="text-[10px] font-black uppercase tracking-[0.25em] text-blue-700/80">SAFE</div>
+                          <div className="text-xs font-black text-slate-900 mt-1">{t('console.intent_safe_owners')}</div>
+                          <div className="text-sm font-mono text-slate-900 mt-1">{ownersCount}</div>
+                        </div>
+                      )}
+                      {threshold != null && (
+                        <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+                          <div className="text-[10px] font-black uppercase tracking-[0.25em] text-blue-700/80">SAFE</div>
+                          <div className="text-xs font-black text-slate-900 mt-1">{t('console.intent_safe_threshold')}</div>
+                          <div className="text-sm font-mono text-slate-900 mt-1">{threshold.toString()}</div>
+                        </div>
+                      )}
+                      {nonce != null && (
+                        <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+                          <div className="text-[10px] font-black uppercase tracking-[0.25em] text-blue-700/80">SAFE</div>
+                          <div className="text-xs font-black text-slate-900 mt-1">{t('console.intent_safe_nonce')}</div>
+                          <div className="text-sm font-mono text-slate-900 mt-1">{nonce.toString()}</div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 <div className="space-y-2">
                   <div className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">{t('console.url')}</div>

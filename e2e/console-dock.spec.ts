@@ -18,10 +18,9 @@ test('Console dock should float across views and be expandable', async ({ page }
 
   // Minimize -> dock line should appear.
   await page.getByRole('button', { name: 'console-minimize' }).click();
-  await expect(page.getByRole('button', { name: 'http-console-dock' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'http-console-fab' })).toBeVisible();
 
   // Expand again from dock.
-  await page.getByRole('button', { name: 'http-console-dock' }).click();
+  await page.getByRole('button', { name: 'http-console-fab' }).click();
   await expect(page.getByText(/Console|控制台/)).toBeVisible();
 });
-
