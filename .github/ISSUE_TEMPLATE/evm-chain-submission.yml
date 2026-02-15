@@ -1,0 +1,70 @@
+name: "EVM Chain Submission / EVM 公链信息提交"
+description: "Submit an EVM chain configuration (RPC endpoints, explorer, currency). / 提交 EVM 公链配置（RPC 节点、浏览器、币种等）。"
+title: "[Chain] <NAME> (chainId=<ID>)"
+labels: ["chain"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This project is RPC-only (no centralized backend). Please provide public RPC endpoints that support standard JSON-RPC.
+        本项目坚持 RPC-only（不依赖中心化后端）。请提供可用的公共 RPC 节点（标准 JSON-RPC）。
+
+  - type: input
+    id: chain_name
+    attributes:
+      label: "Chain Name / 公链名称"
+      placeholder: "ExampleNet"
+    validations:
+      required: true
+
+  - type: input
+    id: chain_id
+    attributes:
+      label: "ChainId / 链ID"
+      placeholder: "12345"
+    validations:
+      required: true
+
+  - type: input
+    id: currency_symbol
+    attributes:
+      label: "Native Currency Symbol / 原生币符号"
+      placeholder: "ETH"
+    validations:
+      required: true
+
+  - type: textarea
+    id: rpc_urls
+    attributes:
+      label: "Public RPC URLs / 公共 RPC 节点"
+      description: "One per line. Must start with http(s)://"
+      placeholder: |
+        https://rpc1.example.org
+        https://rpc2.example.org
+    validations:
+      required: true
+
+  - type: input
+    id: explorer_name
+    attributes:
+      label: "Explorer Name / 浏览器名称"
+      placeholder: "ExampleScan"
+    validations:
+      required: false
+
+  - type: input
+    id: explorer_url
+    attributes:
+      label: "Explorer URL / 浏览器网址"
+      placeholder: "https://explorer.example.org"
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: "Extra Notes / 补充说明"
+      description: "Chain quirks, rate limits, CORS issues, etc."
+    validations:
+      required: false
+

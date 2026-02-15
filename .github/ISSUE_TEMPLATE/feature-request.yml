@@ -1,0 +1,57 @@
+name: "Feature Request / 功能请求"
+description: "Request a new feature or UX improvement. / 提交新功能或体验改进需求。"
+title: "[Feature] <short title>"
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Reminder: Wallet RPC is RPC-only with 0 backend dependencies and 0 telemetry.
+        提醒：Wallet RPC 坚持 RPC-only、后台 0 依赖、零遥测。
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: "Problem / 问题"
+      description: "What problem are you trying to solve?"
+      placeholder: "As a user, I want..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: "Proposed Solution / 方案"
+      description: "Describe the solution and expected UX."
+    validations:
+      required: true
+
+  - type: textarea
+    id: rpc_only_check
+    attributes:
+      label: "RPC-only Check / RPC-only 约束检查"
+      description: "Explain how this can be implemented without any centralized backend services."
+      placeholder: "All data comes from chain RPC; no external business APIs needed."
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: "Acceptance Criteria / 验收标准"
+      description: "Bullet list of verifiable outcomes."
+      placeholder: |
+        - Given ... when ... then ...
+        - Works on mobile and desktop
+        - i18n: EN + ZH
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: "Alternatives / 备选方案"
+      description: "Any alternatives considered?"
+    validations:
+      required: false
+

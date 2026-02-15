@@ -1,0 +1,79 @@
+name: "Token Submission / 代币提交"
+description: "Submit a token to be supported/imported more easily in Wallet RPC (RPC-only). / 提交代币信息，便于 Wallet RPC 更好支持（仅 RPC）。"
+title: "[Token] <SYMBOL> on <CHAIN>"
+labels: ["token"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please ensure the information is accurate. This project is RPC-only and has 0 backend dependencies.
+        请确保信息准确。本项目坚持 RPC-only、后台 0 依赖。
+
+  - type: input
+    id: chain_name
+    attributes:
+      label: "Chain / 公链"
+      description: "Example: Ethereum, Polygon, BSC, Tron (TRC20) ..."
+      placeholder: "Ethereum"
+    validations:
+      required: true
+
+  - type: input
+    id: chain_id
+    attributes:
+      label: "ChainId (EVM) / 链ID（EVM）"
+      description: "If TRON, write N/A."
+      placeholder: "1"
+    validations:
+      required: true
+
+  - type: input
+    id: token_address
+    attributes:
+      label: "Token Contract Address / 合约地址"
+      description: "EVM: 0x...  TRON(TRC20): T... or contract address per TRON explorer."
+      placeholder: "0x..."
+    validations:
+      required: true
+
+  - type: input
+    id: symbol
+    attributes:
+      label: "Symbol / 符号"
+      placeholder: "USDT"
+    validations:
+      required: true
+
+  - type: input
+    id: decimals
+    attributes:
+      label: "Decimals / 精度"
+      placeholder: "6"
+    validations:
+      required: true
+
+  - type: input
+    id: name
+    attributes:
+      label: "Name / 名称"
+      placeholder: "Tether USD"
+    validations:
+      required: false
+
+  - type: input
+    id: explorer_link
+    attributes:
+      label: "Explorer Link / 浏览器链接"
+      description: "A direct link to the token contract page."
+      placeholder: "https://..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: "Notes / 备注"
+      description: "Anything else helpful (logo, warnings, etc.)."
+    validations:
+      required: false
+
