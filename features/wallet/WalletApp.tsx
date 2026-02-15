@@ -72,7 +72,7 @@ export const WalletApp: React.FC = () => {
     new URLSearchParams(window.location.search).get('e2e') === '1';
   const {
     wallet, activeChain, activeAddress, activeChainTokens, activeAccountType, setActiveAccountType, activeSafeAddress, setActiveSafeAddress,
-    activeChainId, chains, view, setView, isMenuOpen, setIsMenuOpen, isLoading, isInitialFetchDone, error, errorObject, notification,
+    activeChainId, chains, view, setView, isMenuOpen, setIsMenuOpen, isLoading, isIntroPreflightDone, error, errorObject, notification,
     isChainModalOpen, setIsChainModalOpen, isAddTokenModalOpen, setIsAddTokenModalOpen, tokenToEdit, setTokenToEdit, balance, tokenBalances, transactions,
     safeDetails, isDeployingSafe, trackedSafes, setTrackedSafes, privateKeyOrPhrase, setPrivateKeyOrPhrase, handleImport,
     handleSendSubmit, confirmAddToken, handleUpdateToken, handleRemoveToken, handleSaveChain,
@@ -114,11 +114,11 @@ export const WalletApp: React.FC = () => {
     }
   }, [view, INTRO_MIN_MS]);
   React.useEffect(() => {
-    if (view === 'intro_animation' && minTimePassed && isInitialFetchDone) {
+    if (view === 'intro_animation' && minTimePassed && isIntroPreflightDone) {
       setIsIntroFadingOut(true);
       setTimeout(() => { setView('dashboard'); setIsIntroFadingOut(false); setMinTimePassed(false); }, INTRO_FADE_MS);
     }
-  }, [view, minTimePassed, isInitialFetchDone, setView, INTRO_FADE_MS]);
+  }, [view, minTimePassed, isIntroPreflightDone, setView, INTRO_FADE_MS]);
 
   if (view === 'onboarding' || !wallet) return <WalletOnboarding input={privateKeyOrPhrase} setInput={setPrivateKeyOrPhrase} onImport={onImportWrapper} error={error} isExiting={isOnboardingExiting} />;
   if (view === 'intro_animation') {

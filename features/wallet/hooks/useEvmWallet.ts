@@ -113,7 +113,9 @@ export const useEvmWallet = () => {
   } = state;
 
   const autoDetectRanRef = useRef(false);
+  const autoDetectingRef = useRef(false);
   const [isAutoDetectingChain, setIsAutoDetectingChain] = useState(false);
+  const [isIntroPreflightDone, setIsIntroPreflightDone] = useState(false);
 
   const activeChain = useMemo(() => {
     return chains.find(c => c.id === activeChainId) || chains[0];
@@ -176,16 +178,6 @@ export const useEvmWallet = () => {
     }
   }, [safeMgr?.handleSafeProposal]);
 
-  // During the intro animation we may auto-detect which chain has assets.
-  // To avoid a "double fetch" (default chain then detected chain), we gate the initial fetch until detection completes.
-  useEffect(() => {
-    const isCoreView = view === 'intro_animation' || view === 'dashboard';
-    if (wallet && isCoreView && !isAutoDetectingChain) {
-      fetchData(false);
-      if (activeChain.chainType !== 'TRON') txMgr.syncNonce();
-    }
-  }, [activeChainId, activeAccountType, activeSafeAddress, wallet, view, activeChain.chainType, isAutoDetectingChain]);
-
   useEffect(() => {
     const run = async () => {
       // Only run right after import, while the intro animation is playing, in EOA context.
@@ -201,14 +193,10 @@ export const useEvmWallet = () => {
       const tronAddr = tronWalletAddress;
       if (!evmAddr && !tronAddr) return;
 
+      // Important: set a ref gate immediately so the "initial fetch" effect in this same flush can see it.
+      autoDetectingRef.current = true;
       setIsAutoDetectingChain(true);
       try {
-        // Prefer the currently selected chain first to minimize surprises.
-        const ordered = [
-          ...(chains.find((c) => c.id === activeChainId) ? [chains.find((c) => c.id === activeChainId)!] : []),
-          ...chains.filter((c) => c.id !== activeChainId)
-        ];
-
         const withTimeout = async <T,>(p: Promise<T>, ms: number): Promise<T> => {
           return await Promise.race([
             p,
@@ -216,38 +204,86 @@ export const useEvmWallet = () => {
           ]);
         };
 
-        for (const c of ordered) {
-          try {
-            if (c.chainType === 'TRON') {
-              if (!tronAddr || !c.defaultRpcUrl) continue;
-              const host = TronService.normalizeHost(c.defaultRpcUrl);
-              const balSun = await withTimeout(TronService.getBalance(host, tronAddr), 5000);
-              if (typeof balSun === 'bigint' && balSun > 0n) {
-                if (c.id !== activeChainId) setActiveChainId(c.id);
-                return;
-              }
-              continue;
-            }
+        // Use the intro animation window: probe chains in parallel with an overall deadline.
+        const PER_CHAIN_TIMEOUT_MS = 900;
+        const TOTAL_BUDGET_MS = 1500;
 
-            if (!c.defaultRpcUrl) continue;
-            const network = ethers.Network.from(c.id);
-            const p = new ethers.JsonRpcProvider(c.defaultRpcUrl, network, { staticNetwork: network });
-            const balWei = await withTimeout(p.getBalance(evmAddr), 5000);
-            if (typeof balWei === 'bigint' && balWei > 0n) {
-              if (c.id !== activeChainId) setActiveChainId(c.id);
-              return;
-            }
-          } catch {
-            // Ignore this chain and continue probing the next.
+        const ordered = [
+          ...(chains.find((c) => c.id === activeChainId) ? [chains.find((c) => c.id === activeChainId)!] : []),
+          ...chains.filter((c) => c.id !== activeChainId)
+        ];
+
+        const probes = ordered.map((c) => (async () => {
+          if (c.chainType === 'TRON') {
+            if (!tronAddr || !c.defaultRpcUrl) throw new Error('skip');
+            const host = TronService.normalizeHost(c.defaultRpcUrl);
+            const balSun = await withTimeout(TronService.getBalance(host, tronAddr), PER_CHAIN_TIMEOUT_MS);
+            if (typeof balSun === 'bigint' && balSun > 0n) return c.id;
+            throw new Error('zero');
           }
+          if (!c.defaultRpcUrl) throw new Error('skip');
+          const network = ethers.Network.from(c.id);
+          const p = new ethers.JsonRpcProvider(c.defaultRpcUrl, network, { staticNetwork: network });
+          const balWei = await withTimeout(p.getBalance(evmAddr), PER_CHAIN_TIMEOUT_MS);
+          if (typeof balWei === 'bigint' && balWei > 0n) return c.id;
+          throw new Error('zero');
+        })());
+
+        let chosen: number | null = null;
+        try {
+          chosen = await Promise.race([
+            Promise.any(probes),
+            new Promise<number>((_, reject) => setTimeout(() => reject(new Error('budget')), TOTAL_BUDGET_MS))
+          ]);
+        } catch {
+          chosen = null;
+        }
+
+        if (typeof chosen === 'number' && chosen !== activeChainId) {
+          setActiveChainId(chosen);
         }
       } finally {
+        autoDetectingRef.current = false;
         setIsAutoDetectingChain(false);
       }
     };
 
     run();
   }, [wallet, tronWalletAddress, chains, view, activeAccountType, activeChainId, setActiveChainId]);
+
+  // Reset intro preflight whenever the wallet session resets/changes.
+  useEffect(() => {
+    if (!wallet) {
+      autoDetectRanRef.current = false;
+      autoDetectingRef.current = false;
+      setIsAutoDetectingChain(false);
+      setIsIntroPreflightDone(false);
+      return;
+    }
+    autoDetectRanRef.current = false;
+    setIsIntroPreflightDone(false);
+  }, [wallet]);
+
+  // During the intro animation we may auto-detect which chain has assets.
+  // To avoid a "double fetch" (default chain then detected chain), we gate the initial fetch until detection completes.
+  useEffect(() => {
+    const isCoreView = view === 'intro_animation' || view === 'dashboard';
+    if (!wallet || !isCoreView) return;
+    if (autoDetectingRef.current || isAutoDetectingChain) return;
+
+    fetchData(false);
+    if (activeChain.chainType !== 'TRON') txMgr.syncNonce();
+  }, [activeChainId, activeAccountType, activeSafeAddress, wallet, view, activeChain.chainType, isAutoDetectingChain, fetchData, txMgr]);
+
+  // Mark the intro preflight as done only after the selected chain has completed its first data sync.
+  useEffect(() => {
+    if (!wallet) return;
+    if (view !== 'intro_animation') return;
+    if (autoDetectingRef.current || isAutoDetectingChain) return;
+    if (dataLayer.isInitialFetchDone) {
+      setIsIntroPreflightDone(true);
+    }
+  }, [wallet, view, isAutoDetectingChain, dataLayer.isInitialFetchDone]);
 
   const handleSaveChain = (config: ChainConfig) => {
     setChains(prev => prev.map(c => c.id === config.id ? { ...config, isCustom: true } : c));
@@ -344,6 +380,7 @@ export const useEvmWallet = () => {
     ...state, ...dataLayer, ...txMgr, ...safeMgr, ...storage,
     activeChain, activeAddress, activeChainTokens, provider,
     handleSaveChain, handleTrackSafe, handleSwitchNetwork, handleLogout, handleRefreshData, confirmAddToken, handleUpdateToken, handleRemoveToken,
-    currentNonce: safeDetails?.nonce || 0
+    currentNonce: safeDetails?.nonce || 0,
+    isIntroPreflightDone
   };
 };
