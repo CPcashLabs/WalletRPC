@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { ChainConfig } from '../../features/wallet/types';
 import { useTransactionManager } from '../../features/wallet/hooks/useTransactionManager';
+import { LanguageProvider } from '../../contexts/LanguageContext';
 
 const evmChain: ChainConfig = {
   id: 199,
@@ -28,7 +29,7 @@ describe('useTransactionManager', () => {
         setError: vi.fn(),
         handleSafeProposal: vi.fn()
       })
-    );
+    , { wrapper: LanguageProvider });
 
     act(() => {
       result.current.localNonceRef.current = 12;
@@ -68,7 +69,7 @@ describe('useTransactionManager', () => {
         setError: vi.fn(),
         handleSafeProposal: vi.fn()
       })
-    );
+    , { wrapper: LanguageProvider });
 
     act(() => {
       result.current.addTransactionRecord({
@@ -108,7 +109,7 @@ describe('useTransactionManager', () => {
         setError: vi.fn(),
         handleSafeProposal: vi.fn()
       })
-    );
+    , { wrapper: LanguageProvider });
 
     act(() => {
       result.current.addTransactionRecord({
@@ -163,7 +164,7 @@ describe('useTransactionManager', () => {
         setError: vi.fn(),
         handleSafeProposal: vi.fn()
       })
-    );
+    , { wrapper: LanguageProvider });
 
     act(() => {
       result.current.addTransactionRecord({

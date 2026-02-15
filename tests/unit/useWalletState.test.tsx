@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { ethers } from 'ethers';
 import { useWalletState } from '../../features/wallet/hooks/useWalletState';
 import { TronService } from '../../services/tronService';
+import { LanguageProvider } from '../../contexts/LanguageContext';
 
 const TEST_MNEMONIC = 'test test test test test test test test test test test junk';
 
@@ -19,7 +20,7 @@ describe('useWalletState', () => {
       privateKey: `0x${'22'.repeat(32)}`
     } as any);
     vi.spyOn(TronService, 'addressFromPrivateKey').mockReturnValue(`T${'1'.repeat(33)}`);
-    const { result } = renderHook(() => useWalletState(199));
+    const { result } = renderHook(() => useWalletState(199), { wrapper: LanguageProvider });
 
     act(() => {
       result.current.setPrivateKeyOrPhrase(TEST_MNEMONIC);
@@ -45,7 +46,7 @@ describe('useWalletState', () => {
   it('支持无 0x 前缀私钥导入', async () => {
     vi.spyOn(TronService, 'addressFromPrivateKey').mockReturnValue(`T${'2'.repeat(33)}`);
     const privateKeyNoPrefix = '59c6995e998f97a5a0044966f0945382d7f9e9955f5d5f8d6f2ad4d9c7cb4d95';
-    const { result } = renderHook(() => useWalletState(1));
+    const { result } = renderHook(() => useWalletState(1), { wrapper: LanguageProvider });
 
     act(() => {
       result.current.setPrivateKeyOrPhrase(privateKeyNoPrefix);
@@ -66,7 +67,7 @@ describe('useWalletState', () => {
   });
 
   it('非法输入会返回错误并设置统一报错信息', async () => {
-    const { result } = renderHook(() => useWalletState(1));
+    const { result } = renderHook(() => useWalletState(1), { wrapper: LanguageProvider });
 
     act(() => {
       result.current.setPrivateKeyOrPhrase('invalid mnemonic');
@@ -78,13 +79,13 @@ describe('useWalletState', () => {
     });
 
     expect(success).toBe(false);
-    expect(result.current.error).toBe('Invalid Key/Mnemonic');
+    expect(result.current.error).toMatch(/Invalid Key\/Mnemonic|私钥\/助记词无效/);
   });
 
   it('clearSession 会清空会话敏感状态并重置视图', async () => {
     vi.spyOn(TronService, 'addressFromPrivateKey').mockReturnValue(`T${'3'.repeat(33)}`);
     const privateKeyNoPrefix = '59c6995e998f97a5a0044966f0945382d7f9e9955f5d5f8d6f2ad4d9c7cb4d95';
-    const { result } = renderHook(() => useWalletState(1));
+    const { result } = renderHook(() => useWalletState(1), { wrapper: LanguageProvider });
 
     act(() => {
       result.current.setPrivateKeyOrPhrase(privateKeyNoPrefix);

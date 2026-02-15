@@ -6,6 +6,7 @@ import { FeeService } from '../../../services/feeService';
 import { handleTxError, normalizeHex } from '../utils';
 import { TronService } from '../../../services/tronService';
 import { ERC20_ABI } from '../config';
+import { useTranslation } from '../../../contexts/LanguageContext';
 
 export interface ProcessResult {
   success: boolean;
@@ -61,6 +62,7 @@ export const useTransactionManager = ({
   setError,
   handleSafeProposal
 }: UseTransactionManagerParams) => {
+  const { t } = useTranslation();
 
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const postConfirmRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -186,7 +188,7 @@ export const useTransactionManager = ({
         setTransactions((prev) =>
           prev.map((tx) =>
             timeoutSet.has(tx.id)
-              ? { ...tx, status: 'failed', error: 'Transaction confirmation timeout' }
+              ? { ...tx, status: 'failed', error: t('tx.err_confirmation_timeout') }
               : tx
           )
         );
@@ -268,7 +270,7 @@ export const useTransactionManager = ({
     }, RECEIPT_POLL_INTERVAL_MS);
 
     return () => clearInterval(interval);
-  }, [provider, transactions, activeChain, activeChainId, schedulePostConfirmRefresh]);
+  }, [provider, transactions, activeChain, activeChainId, schedulePostConfirmRefresh, t]);
 
   /**
    * 处理各种交易类型的提议与发送
@@ -276,7 +278,7 @@ export const useTransactionManager = ({
   const handleSendSubmit = async (data: TransactionInput): Promise<ProcessResult> => {
     try {
       const isTron = activeChain.chainType === 'TRON';
-      if (!wallet || (!provider && !isTron)) throw new Error("Wallet/Provider not ready");
+      if (!wallet || (!provider && !isTron)) throw new Error(t('tx.err_wallet_provider_not_ready'));
 
       const displaySymbol = data.asset === 'NATIVE' ? activeChain.currencySymbol : data.asset;
       const token = data.assetAddress
@@ -287,7 +289,7 @@ export const useTransactionManager = ({
       // --- [特殊路径：Safe 多签提议] ---
       // 此处完全不占用 EOA 的 Nonce，通过 SafeManager 的 Batch 逻辑实现 0 冗余 RPC
       if (activeAccountType === 'SAFE') {
-        if (!handleSafeProposal) throw new Error("Safe manager not initialized");
+        if (!handleSafeProposal) throw new Error(t('tx.err_safe_manager_not_ready'));
         
         let targetAddress = data.recipient;
         let value = 0n;
@@ -302,14 +304,14 @@ export const useTransactionManager = ({
           value = ethers.parseEther(data.amount || "0");
         }
 
-        const success = await handleSafeProposal(targetAddress, value, callData, `Send ${data.amount} ${displaySymbol}`);
+        const success = await handleSafeProposal(targetAddress, value, callData, `${t('tx.summary_send')} ${data.amount} ${displaySymbol}`);
         return { success };
       }
 
       // --- [路径：波场原生/代币转账] ---
       // 优化：TronService 使用自定义构建逻辑，仅产生 1 次广播请求，不预检 Nonce。
       if (isTron) {
-        if (!tronPrivateKey) throw new Error("TRON private key missing");
+        if (!tronPrivateKey) throw new Error(t('tx.err_tron_private_key_missing'));
         const decimals = data.asset === 'NATIVE' ? 6 : (token?.decimals || Number(data.assetDecimals ?? 6));
         const amountSun = ethers.parseUnits(data.amount || "0", decimals);
 
@@ -320,10 +322,10 @@ export const useTransactionManager = ({
 
         if (result.success && result.txid) {
           const id = Date.now().toString();
-          setTransactions(prev => [{ id, chainId: Number(activeChainId), hash: result.txid, status: 'submitted', timestamp: Date.now(), summary: `Send ${data.amount} ${displaySymbol}` }, ...prev]);
+          setTransactions(prev => [{ id, chainId: Number(activeChainId), hash: result.txid, status: 'submitted', timestamp: Date.now(), summary: `${t('tx.summary_send')} ${data.amount} ${displaySymbol}` }, ...prev]);
           return { success: true, hash: result.txid };
         } else {
-          throw new Error(result.error || "TRON broadcast failed");
+          throw new Error(result.error || t('tx.err_tron_broadcast_failed'));
         }
       }
 
@@ -360,7 +362,7 @@ export const useTransactionManager = ({
       if (localNonceRef.current !== null) localNonceRef.current++;
 
       const id = Date.now().toString();
-      setTransactions(prev => [{ id, chainId: Number(activeChainId), hash: tx.hash, status: 'submitted', timestamp: Date.now(), summary: `Send ${data.amount} ${displaySymbol}` }, ...prev]);
+      setTransactions(prev => [{ id, chainId: Number(activeChainId), hash: tx.hash, status: 'submitted', timestamp: Date.now(), summary: `${t('tx.summary_send')} ${data.amount} ${displaySymbol}` }, ...prev]);
 
       return { success: true, hash: tx.hash };
     } catch (e: unknown) {
@@ -370,7 +372,7 @@ export const useTransactionManager = ({
       if (errorMsg.includes("nonce") || errorMsg.includes("replacement transaction")) {
         localNonceRef.current = null;
       }
-      const error = handleTxError(e);
+      const error = handleTxError(e, t);
       setError(error);
       return { success: false, error };
     }

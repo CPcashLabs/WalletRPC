@@ -38,6 +38,7 @@ export interface I18nSchema {
     token_updated: string;
     token_removed: string;
     data_sync_fault: string;
+    import_invalid: string;
   };
   tx: {
     send: string; send_btn: string; recipient: string; amount: string;
@@ -50,6 +51,30 @@ export interface I18nSchema {
     transmission_confirmed: string; validated_ledger: string; pending_validation: string;
     broadcast_success: string; background_run: string; protocol_fault: string;
     reboot_form: string;
+    err_wallet_provider_not_ready: string;
+    err_safe_manager_not_ready: string;
+    err_tron_private_key_missing: string;
+    err_tron_broadcast_failed: string;
+    err_confirmation_timeout: string;
+    err_unknown_failure: string;
+    summary_send: string;
+
+    err_insufficient_funds: string;
+    err_numeric_fault: string;
+    err_nonce_expired: string;
+    err_replacement_underpriced: string;
+    err_action_rejected: string;
+    err_call_exception: string;
+    err_unpredictable_gas: string;
+    err_insufficient_funds_short: string;
+    err_gas_limit_low: string;
+    err_nonce_too_low: string;
+    err_already_known: string;
+    err_execution_reverted: string;
+    err_reason: string;
+    err_safe_gs013: string;
+    err_safe_gs026: string;
+    err_transaction_failed: string;
   };
   safe: {
     queue_title: string; current_nonce: string; all_clear: string; signatures: string;
@@ -90,6 +115,7 @@ export interface I18nSchema {
     summary_add_owner: string;
     summary_remove_owner: string;
     summary_change_threshold: string;
+    sig_short: string;
   };
   settings: {
     title: string; subtitle: string; current_network: string; rpc_connection: string;
@@ -103,5 +129,9 @@ export interface I18nSchema {
     tron_rpc_validation_failed: string;
     save_failed: string;
     no_explorers: string;
+    public_node: string;
+    rpc_url_invalid_scheme: string;
+    rpc_chainid_mismatch: string;
+    rpc_validation_failed: string;
   };
 }

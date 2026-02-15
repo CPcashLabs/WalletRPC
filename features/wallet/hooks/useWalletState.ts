@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { ethers } from 'ethers';
 import { TronService } from '../../../services/tronService';
 import { TokenConfig } from '../types';
+import { useTranslation } from '../../../contexts/LanguageContext';
 
 /**
  * 【架构设计：原子化 UI 状态机】
@@ -11,6 +12,7 @@ import { TokenConfig } from '../types';
  * 协作：作为 useEvmWallet 的基础，为数据层 and 交易层提供 Wallet 实例。
  */
 export const useWalletState = (initialChainId: number) => {
+  const { t } = useTranslation();
   // 核心钱包实例 (仅内存存储，安全设计：刷新即销毁)
   const [wallet, setWallet] = useState<ethers.Wallet | ethers.HDNodeWallet | null>(null);
   const [tronWalletAddress, setTronWalletAddress] = useState<string | null>(null);
@@ -72,7 +74,7 @@ export const useWalletState = (initialChainId: number) => {
       
       return true;
     } catch (e) {
-      setErrorObject({ message: "Invalid Key/Mnemonic", timestamp: Date.now() });
+      setErrorObject({ message: t('wallet.import_invalid'), timestamp: Date.now() });
       return false;
     }
   };

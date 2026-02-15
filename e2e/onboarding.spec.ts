@@ -20,7 +20,7 @@ test.describe('Wallet RPC Onboarding', () => {
     await page.locator('textarea').fill('invalid mnemonic');
     await expect(zhConfirm).toBeEnabled();
     await zhConfirm.click();
-    await expect(page.getByText('Invalid Key/Mnemonic')).toBeVisible();
+    await expect(page.getByText('私钥/助记词无效')).toBeVisible();
   });
 
   test('有效助记词导入后应平滑快速进入主界面', async ({ page }) => {

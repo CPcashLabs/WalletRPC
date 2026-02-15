@@ -93,7 +93,7 @@ export const TransferStateView: React.FC<TransferStateViewProps> = ({
            <div className="w-24 h-24 bg-red-50/50 rounded-full flex items-center justify-center mx-auto border border-red-100 shadow-inner"><AlertTriangle className="w-10 h-10 text-red-500" /></div>
            <div>
              <h3 className="text-xl font-black text-red-500 uppercase tracking-widest italic mb-3">{t('tx.protocol_fault')}</h3>
-             <div className="text-[10px] text-slate-400 font-mono bg-slate-50/80 p-5 rounded-2xl border border-slate-100 max-w-xs mx-auto break-words leading-relaxed shadow-sm">{error || "Unknown Failure"}</div>
+             <div className="text-[10px] text-slate-400 font-mono bg-slate-50/80 p-5 rounded-2xl border border-slate-100 max-w-xs mx-auto break-words leading-relaxed shadow-sm">{error || t('tx.err_unknown_failure')}</div>
            </div>
            <Button onClick={onClose} variant="outline" className="min-w-[140px] py-3 border-slate-200">{t('tx.reboot_form')}</Button>
         </div>

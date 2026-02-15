@@ -328,7 +328,7 @@ export const SafeSettings: React.FC<SafeSettingsProps> = ({
         </div>
         <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-xl border border-slate-100 w-full md:w-auto">
           <select className="bg-transparent border-none text-sm font-black text-slate-700 py-1 pl-2 pr-8 flex-1 md:flex-none" value={newThresholdSelect} onChange={e => setNewThresholdSelect(Number(e.target.value))}>
-            {displayOwners.filter(o => !o.isPending).map((_, i) => <option key={i} value={i+1}>{i+1} SIG</option>)}
+            {displayOwners.filter(o => !o.isPending).map((_, i) => <option key={i} value={i+1}>{i+1} {t('safe.sig_short')}</option>)}
           </select>
           <Button onClick={() => onChangeThreshold(newThresholdSelect)} className="text-xs py-2 h-auto">{t('common.update')}</Button>
         </div>

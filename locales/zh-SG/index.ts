@@ -63,6 +63,8 @@ export const zhSG: I18nSchema = {
     token_updated: "代币已更新",
     token_removed: "代币已删除",
     data_sync_fault: "数据同步故障"
+    ,
+    import_invalid: "私钥/助记词无效"
   },
   tx: {
     send: "广播交易指令",
@@ -93,7 +95,31 @@ export const zhSG: I18nSchema = {
     broadcast_success: "广播成功。节点正在验证区块包含情况。",
     background_run: "后台运行",
     protocol_fault: "协议故障",
-    reboot_form: "重置表单"
+    reboot_form: "重置表单",
+    err_wallet_provider_not_ready: "钱包或节点未就绪",
+    err_safe_manager_not_ready: "Safe 管理器未初始化",
+    err_tron_private_key_missing: "缺少 TRON 私钥",
+    err_tron_broadcast_failed: "TRON 广播失败",
+    err_confirmation_timeout: "交易确认超时",
+    err_unknown_failure: "未知错误",
+    summary_send: "发送"
+    ,
+    err_insufficient_funds: "余额不足（含手续费与转账金额）。请先充值。",
+    err_numeric_fault: "数值格式无效，请检查金额与精度。",
+    err_nonce_expired: "Nonce 已过期或已被使用，请刷新后重试。",
+    err_replacement_underpriced: "替换交易手续费过低，请提高 gas。",
+    err_action_rejected: "用户已拒绝交易。",
+    err_call_exception: "交易在链上回滚，请检查合约逻辑、余额或授权。",
+    err_unpredictable_gas: "无法估算 gas，交易可能在链上失败。",
+    err_insufficient_funds_short: "交易余额不足。",
+    err_gas_limit_low: "Gas limit 过低。",
+    err_nonce_too_low: "Nonce 过低，正在重置同步...",
+    err_already_known: "交易已在内存池中存在。",
+    err_execution_reverted: "执行回滚。",
+    err_reason: "原因",
+    err_safe_gs013: "Safe 交易失败（GS013），请检查 Safe 余额或 gas 限制。",
+    err_safe_gs026: "Safe 签名/所有者无效（GS026）。",
+    err_transaction_failed: "交易失败"
   },
   safe: {
     queue_title: "交易队列",
@@ -152,7 +178,8 @@ export const zhSG: I18nSchema = {
     summary_deploy_safe: "部署 Safe",
     summary_add_owner: "添加成员",
     summary_remove_owner: "移除成员",
-    summary_change_threshold: "修改阈值"
+    summary_change_threshold: "修改阈值",
+    sig_short: "签"
   },
   settings: {
     title: "设置",
@@ -181,6 +208,10 @@ export const zhSG: I18nSchema = {
     rpc_must_http: "RPC 地址必须以 http(s):// 开头。",
     tron_rpc_validation_failed: "TRON RPC 校验失败",
     save_failed: "保存失败",
-    no_explorers: "未配置区块浏览器。"
+    no_explorers: "未配置区块浏览器。",
+    public_node: "公共节点",
+    rpc_url_invalid_scheme: "RPC 地址必须以 http(s):// 开头。",
+    rpc_chainid_mismatch: "RPC 链 ID 不匹配",
+    rpc_validation_failed: "RPC 校验失败"
   }
 };

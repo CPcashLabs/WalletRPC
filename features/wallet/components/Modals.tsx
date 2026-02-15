@@ -87,7 +87,13 @@ export const ChainModal: React.FC<ChainModalProps> = ({
         } else {
           const ok = await validateEvmRpcEndpoint(rpcUrlRaw, resolvedConfig.id);
           if (!ok.ok) {
-            setSaveError(ok.error);
+            if (ok.code === 'rpc_url_invalid_scheme') {
+              setSaveError(t('settings.rpc_url_invalid_scheme'));
+            } else if (ok.code === 'rpc_chainid_mismatch') {
+              setSaveError(`${t('settings.rpc_chainid_mismatch')}: expected ${ok.expected}, got ${ok.got}`);
+            } else {
+              setSaveError(`${t('settings.rpc_validation_failed')}: ${ok.detail}`);
+            }
             return;
           }
         }
@@ -145,7 +151,7 @@ export const ChainModal: React.FC<ChainModalProps> = ({
                  <select className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-base font-medium outline-none" value={rpcMode === 'custom' ? 'custom' : config.defaultRpcUrl} onChange={(e) => { const val = e.target.value; if (val === 'custom') setRpcMode('custom'); else { setRpcMode('preset'); setConfig({ ...config, defaultRpcUrl: val }); } }}>
                     {initialConfig.publicRpcUrls?.map((url, idx) => (
                       <option key={url} value={url}>
-                        Public Node {idx + 1} ({safeHostname(url)})
+                        {t('settings.public_node')} {idx + 1} ({safeHostname(url)})
                       </option>
                     ))}
                     <option value="custom">{t('settings.custom_rpc')}</option>

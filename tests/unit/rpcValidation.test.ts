@@ -32,8 +32,11 @@ describe('rpcValidation', () => {
     const result = await validateEvmRpcEndpoint('https://rpc.local', 1);
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.error).toContain('mismatch');
+      expect(result.code).toBe('rpc_chainid_mismatch');
+      if (result.code === 'rpc_chainid_mismatch') {
+        expect(result.expected).toBe(1);
+        expect(result.got).toBe(2);
+      }
     }
   });
 });
-

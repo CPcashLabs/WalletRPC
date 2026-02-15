@@ -36,7 +36,7 @@ export const getExplorerAddressLink = (chain: ChainConfig, address: string) => {
   return explorer.addressPath.replace("{address}", address);
 };
 
-export const handleTxError = (e: any) => {
+export const handleTxError = (e: any, t?: (key: string) => string) => {
   console.error(e);
   if (typeof e === 'string') return e;
   
@@ -44,26 +44,26 @@ export const handleTxError = (e: any) => {
   const code = e?.code || e?.error?.code;
 
   // Ethers specific codes
-  if (code === 'INSUFFICIENT_FUNDS') return "Insufficient funds for gas + value. Please top up your wallet.";
-  if (code === 'NUMERIC_FAULT') return "Invalid numeric value entered. Check amount and decimals.";
-  if (code === 'NONCE_EXPIRED') return "Nonce expired or already used. Please refresh and try again.";
-  if (code === 'REPLACEMENT_UNDERPRICED') return "Replacement transaction underpriced. Increase gas price.";
-  if (code === 'ACTION_REJECTED') return "Transaction rejected by user.";
-  if (code === 'CALL_EXCEPTION') return "Transaction reverted on-chain. Check contract logic, token balance, or allowance.";
-  if (code === 'UNPREDICTABLE_GAS_LIMIT') return "Cannot estimate gas. Transaction may fail on-chain.";
+  if (code === 'INSUFFICIENT_FUNDS') return t ? t('tx.err_insufficient_funds') : "Insufficient funds for gas + value. Please top up your wallet.";
+  if (code === 'NUMERIC_FAULT') return t ? t('tx.err_numeric_fault') : "Invalid numeric value entered. Check amount and decimals.";
+  if (code === 'NONCE_EXPIRED') return t ? t('tx.err_nonce_expired') : "Nonce expired or already used. Please refresh and try again.";
+  if (code === 'REPLACEMENT_UNDERPRICED') return t ? t('tx.err_replacement_underpriced') : "Replacement transaction underpriced. Increase gas price.";
+  if (code === 'ACTION_REJECTED') return t ? t('tx.err_action_rejected') : "Transaction rejected by user.";
+  if (code === 'CALL_EXCEPTION') return t ? t('tx.err_call_exception') : "Transaction reverted on-chain. Check contract logic, token balance, or allowance.";
+  if (code === 'UNPREDICTABLE_GAS_LIMIT') return t ? t('tx.err_unpredictable_gas') : "Cannot estimate gas. Transaction may fail on-chain.";
 
   // RPC strings common in Geth/Parity
-  if (msg.includes('insufficient funds')) return "Insufficient funds for transaction.";
-  if (msg.includes('gas limit')) return "Gas limit too low.";
-  if (msg.includes('nonce too low')) return "Nonce too low. Resetting sync...";
-  if (msg.includes('already known') || code === -32000) return "Transaction already known (in mempool).";
-  if (msg.includes('execution reverted')) return "Execution reverted. " + (e.reason ? `Reason: ${e.reason}` : "");
+  if (msg.includes('insufficient funds')) return t ? t('tx.err_insufficient_funds_short') : "Insufficient funds for transaction.";
+  if (msg.includes('gas limit')) return t ? t('tx.err_gas_limit_low') : "Gas limit too low.";
+  if (msg.includes('nonce too low')) return t ? t('tx.err_nonce_too_low') : "Nonce too low. Resetting sync...";
+  if (msg.includes('already known') || code === -32000) return t ? t('tx.err_already_known') : "Transaction already known (in mempool).";
+  if (msg.includes('execution reverted')) return (t ? t('tx.err_execution_reverted') : "Execution reverted.") + (e.reason ? ` ${t ? t('tx.err_reason') : 'Reason'}: ${e.reason}` : "");
 
   // Safe specific
-  if (msg.includes('GS013')) return "Safe Transaction Failed (GS013). Check Safe funds or gas limits.";
-  if (msg.includes('GS026')) return "Invalid Safe Signature/Owners (GS026).";
+  if (msg.includes('GS013')) return t ? t('tx.err_safe_gs013') : "Safe Transaction Failed (GS013). Check Safe funds or gas limits.";
+  if (msg.includes('GS026')) return t ? t('tx.err_safe_gs026') : "Invalid Safe Signature/Owners (GS026).";
   
   // Default fallback with truncation
   if (msg.length > 150) return msg.slice(0, 150) + "...";
-  return msg || "Transaction failed";
+  return msg || (t ? t('tx.err_transaction_failed') : "Transaction failed");
 };

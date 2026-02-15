@@ -63,6 +63,8 @@ export const en: I18nSchema = {
     token_updated: "Token updated",
     token_removed: "Token removed",
     data_sync_fault: "Data synchronization fault"
+    ,
+    import_invalid: "Invalid Key/Mnemonic"
   },
   tx: {
     send: "Broadcast Transaction",
@@ -93,7 +95,31 @@ export const en: I18nSchema = {
     broadcast_success: "Broadcast successful. Node is verifying block inclusion.",
     background_run: "BACKGROUND_RUN",
     protocol_fault: "Protocol_Fault",
-    reboot_form: "REBOOT_FORM"
+    reboot_form: "REBOOT_FORM",
+    err_wallet_provider_not_ready: "Wallet/Provider not ready",
+    err_safe_manager_not_ready: "Safe manager not initialized",
+    err_tron_private_key_missing: "TRON private key missing",
+    err_tron_broadcast_failed: "TRON broadcast failed",
+    err_confirmation_timeout: "Transaction confirmation timeout",
+    err_unknown_failure: "Unknown Failure",
+    summary_send: "Send"
+    ,
+    err_insufficient_funds: "Insufficient funds for gas + value. Please top up your wallet.",
+    err_numeric_fault: "Invalid numeric value entered. Check amount and decimals.",
+    err_nonce_expired: "Nonce expired or already used. Please refresh and try again.",
+    err_replacement_underpriced: "Replacement transaction underpriced. Increase gas price.",
+    err_action_rejected: "Transaction rejected by user.",
+    err_call_exception: "Transaction reverted on-chain. Check contract logic, token balance, or allowance.",
+    err_unpredictable_gas: "Cannot estimate gas. Transaction may fail on-chain.",
+    err_insufficient_funds_short: "Insufficient funds for transaction.",
+    err_gas_limit_low: "Gas limit too low.",
+    err_nonce_too_low: "Nonce too low. Resetting sync...",
+    err_already_known: "Transaction already known (in mempool).",
+    err_execution_reverted: "Execution reverted.",
+    err_reason: "Reason",
+    err_safe_gs013: "Safe Transaction Failed (GS013). Check Safe funds or gas limits.",
+    err_safe_gs026: "Invalid Safe Signature/Owners (GS026).",
+    err_transaction_failed: "Transaction failed"
   },
   safe: {
     queue_title: "Transaction Queue",
@@ -152,7 +178,8 @@ export const en: I18nSchema = {
     summary_deploy_safe: "Deploying Safe Vault",
     summary_add_owner: "Add Owner",
     summary_remove_owner: "Remove Owner",
-    summary_change_threshold: "Change Threshold"
+    summary_change_threshold: "Change Threshold",
+    sig_short: "SIG"
   },
   settings: {
     title: "Settings",
@@ -181,6 +208,10 @@ export const en: I18nSchema = {
     rpc_must_http: "RPC URL must start with http(s)://",
     tron_rpc_validation_failed: "TRON RPC validation failed",
     save_failed: "Save failed",
-    no_explorers: "No explorers configured."
+    no_explorers: "No explorers configured.",
+    public_node: "Public Node",
+    rpc_url_invalid_scheme: "RPC URL must start with http(s)://",
+    rpc_chainid_mismatch: "RPC chainId mismatch",
+    rpc_validation_failed: "RPC validation failed"
   }
 };

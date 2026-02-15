@@ -50,19 +50,24 @@ export const validateEvmRpcEndpoint = async (
   rpcUrl: string,
   expectedChainId: number,
   timeoutMs: number = 5000
-): Promise<{ ok: true } | { ok: false; error: string }> => {
+): Promise<
+  | { ok: true }
+  | { ok: false; code: 'rpc_url_invalid_scheme'; detail?: string }
+  | { ok: false; code: 'rpc_chainid_mismatch'; expected: number; got: number }
+  | { ok: false; code: 'rpc_validation_failed'; detail: string }
+> => {
   if (!isHttpUrl(rpcUrl)) {
-    return { ok: false, error: 'RPC URL must start with http(s)://' };
+    return { ok: false, code: 'rpc_url_invalid_scheme' };
   }
 
   try {
     const chainId = await probeEvmChainId(rpcUrl, timeoutMs);
     if (chainId !== expectedChainId) {
-      return { ok: false, error: `RPC chainId mismatch: expected ${expectedChainId}, got ${chainId}` };
+      return { ok: false, code: 'rpc_chainid_mismatch', expected: expectedChainId, got: chainId };
     }
     return { ok: true };
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    return { ok: false, error: `RPC validation failed: ${msg}` };
+    return { ok: false, code: 'rpc_validation_failed', detail: msg };
   }
 };
