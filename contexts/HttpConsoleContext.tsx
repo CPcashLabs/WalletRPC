@@ -120,43 +120,11 @@ const deriveRpcMeta = (body: unknown): { rpcMethod?: string; isBatch?: boolean }
   return {};
 };
 
-const shortHex = (v: unknown, head = 6, tail = 4): string | null => {
-  if (typeof v !== 'string') return null;
-  const s = v.trim();
-  if (!/^0x[0-9a-fA-F]+$/.test(s)) return null;
-  if (s.length <= 2 + head + tail) return s;
-  return `0x${s.slice(2, 2 + head)}...${s.slice(-tail)}`;
-};
-
-const concatIntent = (prefix: string, value: string): string => {
-  const p = String(prefix || '').trimEnd();
-  if (!p) return value;
-  // If translator uses ":" or "：" at the end, don't add extra spacing.
-  if (p.endsWith(':') || p.endsWith('：')) return `${p}${value}`;
-  return `${p} ${value}`;
-};
-
 const getSelector = (data: unknown): string | null => {
   if (typeof data !== 'string') return null;
   const s = data.trim().toLowerCase();
   if (!s.startsWith('0x') || s.length < 10) return null;
   return s.slice(0, 10); // 4-byte selector
-};
-
-const decodeAddressFromWord = (hexWord: string): string | null => {
-  const clean = hexWord.replace(/^0x/i, '');
-  if (clean.length !== 64) return null;
-  const addr = clean.slice(24);
-  if (!/^[0-9a-fA-F]{40}$/.test(addr)) return null;
-  return `0x${addr}`;
-};
-
-const decodeLastAddressParam = (data: unknown): string | null => {
-  if (typeof data !== 'string') return null;
-  const s = data.trim();
-  if (!s.startsWith('0x') || s.length < 10 + 64) return null;
-  const tail = s.slice(-64);
-  return decodeAddressFromWord(tail);
 };
 
 const describeEthCall = (call: any, t: (k: string) => string): string => {
@@ -612,12 +580,11 @@ export const useHttpConsole = (): HttpConsoleContextValue => {
 
 const HttpConsoleDock: React.FC = () => {
   const { t } = useTranslation();
-  const { enabled, setEnabled, expanded, setExpanded, events, open } = useHttpConsole();
+  const { enabled, expanded, setExpanded, events, open } = useHttpConsole();
 
   // Show the dock if enabled or expanded (expanded implies enabled, but keep it robust).
   // Keep the entry visible if it already captured events (so logs can be inspected later).
   const visible = enabled || expanded || events.length > 0;
-  const latest = events[0];
 
   if (!visible) return null;
 
