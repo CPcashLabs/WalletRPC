@@ -6,6 +6,78 @@ const bytesToHex = (bytes: ArrayLike<number>): string => {
   return `0x${Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')}`;
 };
 
+const fetchWithTimeout = async (input: string, init: RequestInit, timeoutMs: number) => {
+  const controller = new AbortController();
+  const timeout = new Promise<never>((_, reject) => {
+    const t = setTimeout(() => {
+      try { controller.abort(); } catch { /* ignore */ }
+      clearTimeout(t);
+      reject(new Error('Request timeout'));
+    }, timeoutMs);
+  });
+
+  const req = fetch(input, { ...init, signal: controller.signal });
+  return await Promise.race([req, timeout]);
+};
+
+const postJson = async <T>(url: string, body: unknown, timeoutMs: number = 8000): Promise<T> => {
+  const res = await fetchWithTimeout(
+    url,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    },
+    timeoutMs
+  );
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+  try {
+    return (await res.json()) as T;
+  } catch {
+    throw new Error('Invalid JSON response');
+  }
+};
+
+const tryDecodeHexAscii = (s: unknown): string | null => {
+  if (typeof s !== 'string') return null;
+  const hex = s.startsWith('0x') ? s.slice(2) : s;
+  if (!hex || hex.length % 2 !== 0) return null;
+  if (!/^[0-9a-fA-F]+$/.test(hex)) return null;
+  try {
+    const bytes = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+    const text = new TextDecoder().decode(bytes);
+    // only accept printable-ish strings
+    if (/^[\x09\x0A\x0D\x20-\x7E]{1,}$/.test(text)) return text;
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+const tryDecodeBase64Ascii = (s: unknown): string | null => {
+  if (typeof s !== 'string' || !s) return null;
+  try {
+    let bytes: Uint8Array;
+    if (typeof atob === 'function') {
+      const bin = atob(s);
+      bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    } else if (typeof Buffer !== 'undefined') {
+      bytes = Uint8Array.from(Buffer.from(s, 'base64'));
+    } else {
+      return null;
+    }
+    const text = new TextDecoder().decode(bytes);
+    if (/^[\x09\x0A\x0D\x20-\x7E]{1,}$/.test(text)) return text;
+    return null;
+  } catch {
+    return null;
+  }
+};
+
 /**
  * 【设计亮点：轻量级协议桥接器 (Adapter Pattern)】
  * 
@@ -47,15 +119,13 @@ export const TronService = {
   getBalance: async (host: string, address: string): Promise<bigint> => {
     try {
       const baseUrl = TronService.normalizeHost(host);
-      const response = await fetch(`${baseUrl}/wallet/getaccount`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          address: TronService.toHexAddress(address), 
-          visible: false 
-        })
-      });
-      const account = await response.json();
+      const account = await postJson<{ balance?: number | string }>(
+        `${baseUrl}/wallet/getaccount`,
+        {
+          address: TronService.toHexAddress(address),
+          visible: false
+        }
+      );
       return BigInt(account.balance || 0);
     } catch (e) { 
       console.error("Tron getBalance failed", e);
@@ -74,19 +144,13 @@ export const TronService = {
       
       const parameter = ownerHex.padStart(64, '0');
       
-      const response = await fetch(`${baseUrl}/wallet/triggerconstantcontract`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          owner_address: ownerHex,
-          contract_address: contractHex,
-          function_selector: "balanceOf(address)",
-          parameter: parameter,
-          visible: false
-        })
+      const result = await postJson<any>(`${baseUrl}/wallet/triggerconstantcontract`, {
+        owner_address: ownerHex,
+        contract_address: contractHex,
+        function_selector: "balanceOf(address)",
+        parameter: parameter,
+        visible: false
       });
-      
-      const result = await response.json();
       if (result.constant_result && result.constant_result.length > 0) {
         return BigInt('0x' + result.constant_result[0]);
       }
@@ -103,12 +167,7 @@ export const TronService = {
   getTransactionInfo: async (host: string, txid: string): Promise<{ found: boolean; success?: boolean }> => {
     try {
       const baseUrl = TronService.normalizeHost(host);
-      const response = await fetch(`${baseUrl}/walletsolidity/gettransactioninfobyid`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ value: txid })
-      });
-      const result = await response.json();
+      const result = await postJson<any>(`${baseUrl}/walletsolidity/gettransactioninfobyid`, { value: txid });
       if (!result || Object.keys(result).length === 0) return { found: false };
       const receiptResult = result.receipt?.result;
       if (receiptResult && receiptResult !== 'SUCCESS') return { found: true, success: false };
@@ -123,9 +182,11 @@ export const TronService = {
    */
   sendTransaction: async (host: string, privateKey: string, to: string, amount: bigint, contractAddress?: string): Promise<{ success: boolean; txid?: string; error?: string }> => {
     const baseUrl = TronService.normalizeHost(host);
+    if (!baseUrl) return { success: false, error: 'Missing TRON RPC base URL' };
     const ownerAddress = TronService.addressFromPrivateKey(privateKey);
     const ownerHex = TronService.toHexAddress(ownerAddress).replace('0x', '');
     const toHex = TronService.toHexAddress(to).replace('0x', '');
+    if (!ownerHex || !toHex) return { success: false, error: 'Invalid address' };
 
     try {
       let transaction: any;
@@ -133,23 +194,23 @@ export const TronService = {
       if (contractAddress) {
         // TRC20 Transfer
         const contractHex = TronService.toHexAddress(contractAddress).replace('0x', '');
+        if (!contractHex) throw new Error('Invalid contract address');
         const functionSelector = "transfer(address,uint256)";
         const parameter = toHex.padStart(64, '0') + amount.toString(16).padStart(64, '0');
 
-        const response = await fetch(`${baseUrl}/wallet/triggersmartcontract`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            owner_address: ownerHex,
-            contract_address: contractHex,
-            function_selector: functionSelector,
-            parameter: parameter,
-            fee_limit: 100000000, // 100 TRX limit
-            visible: false
-          })
+        const result = await postJson<any>(`${baseUrl}/wallet/triggersmartcontract`, {
+          owner_address: ownerHex,
+          contract_address: contractHex,
+          function_selector: functionSelector,
+          parameter: parameter,
+          fee_limit: 100000000, // 100 TRX limit
+          visible: false
         });
-        const result = await response.json();
-        if (!result.result?.result) throw new Error(result.result?.message || "Trigger contract failed");
+        if (!result.result?.result) {
+          const raw = result.result?.message || result.message || 'Trigger contract failed';
+          const decoded = tryDecodeHexAscii(raw) || tryDecodeBase64Ascii(raw);
+          throw new Error(decoded || String(raw));
+        }
         transaction = result.transaction;
       } else {
         // Native TRX Transfer
@@ -157,17 +218,12 @@ export const TronService = {
         if (!Number.isSafeInteger(amountNumber) || amountNumber < 0) {
           throw new Error("TRX amount exceeds safe integer range");
         }
-        const response = await fetch(`${baseUrl}/wallet/createtransaction`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            owner_address: ownerHex,
-            to_address: toHex,
-            amount: amountNumber,
-            visible: false
-          })
+        transaction = await postJson<any>(`${baseUrl}/wallet/createtransaction`, {
+          owner_address: ownerHex,
+          to_address: toHex,
+          amount: amountNumber,
+          visible: false
         });
-        transaction = await response.json();
       }
 
       if (transaction.Error) throw new Error(transaction.Error);
@@ -181,17 +237,14 @@ export const TronService = {
       const signedTx = { ...transaction, signature: [sigHex] };
 
       // 广播
-      const broadcastResponse = await fetch(`${baseUrl}/wallet/broadcasttransaction`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(signedTx)
-      });
-      const broadcastResult = await broadcastResponse.json();
+      const broadcastResult = await postJson<any>(`${baseUrl}/wallet/broadcasttransaction`, signedTx);
 
       if (broadcastResult.result) {
         return { success: true, txid: transaction.txID };
       } else {
-        return { success: false, error: broadcastResult.message || "Broadcast failed" };
+        const raw = broadcastResult.message || broadcastResult.code || "Broadcast failed";
+        const decoded = tryDecodeHexAscii(raw) || tryDecodeBase64Ascii(raw);
+        return { success: false, error: decoded || String(raw) };
       }
     } catch (e: any) {
       console.error("TRON send failed", e);
@@ -204,13 +257,7 @@ export const TronService = {
     if (!baseUrl) return { ok: false, error: 'Missing TRON RPC base URL' };
 
     try {
-      const response = await fetch(`${baseUrl}/wallet/getnowblock`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
-      });
-      if (!response.ok) return { ok: false, error: `HTTP ${response.status}` };
-      const data = await response.json();
+      const data = await postJson<any>(`${baseUrl}/wallet/getnowblock`, {});
       const looksLikeBlock = !!(data && (data.blockID || data.block_header || data.block_header?.raw_data));
       return looksLikeBlock ? { ok: true } : { ok: false, error: 'Unexpected response' };
     } catch (error) {

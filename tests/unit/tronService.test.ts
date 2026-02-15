@@ -21,6 +21,8 @@ describe('TronService', () => {
 
   it('getBalance 使用标准 endpoint 并解析 bigint 余额', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
+      ok: true,
+      status: 200,
       json: async () => ({ balance: 123456 })
     } as Response);
 
@@ -34,6 +36,8 @@ describe('TronService', () => {
 
   it('getBalance 会将 /jsonrpc 形式的 host 归一化为 REST base', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
+      ok: true,
+      status: 200,
       json: async () => ({ balance: 1 })
     } as Response);
 
@@ -46,6 +50,8 @@ describe('TronService', () => {
 
   it('getTRC20Balance 解析 constant_result 并返回 bigint', async () => {
     vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
+      ok: true,
+      status: 200,
       json: async () => ({ constant_result: ['00000000000000000000000000000000000000000000000000000000000003e8'] })
     } as Response);
 
@@ -56,9 +62,13 @@ describe('TronService', () => {
   it('getTransactionInfo 正确识别未上链与成功状态', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch' as any);
     fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
       json: async () => ({})
     } as Response);
     fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
       json: async () => ({ receipt: { result: 'SUCCESS' } })
     } as Response);
 
@@ -71,6 +81,8 @@ describe('TronService', () => {
 
   it('getTransactionInfo 在 receipt 非 SUCCESS 时返回失败状态', async () => {
     vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
+      ok: true,
+      status: 200,
       json: async () => ({ receipt: { result: 'OUT_OF_ENERGY' } })
     } as Response);
 
@@ -82,9 +94,13 @@ describe('TronService', () => {
     vi.spyOn(TronService, 'addressFromPrivateKey').mockReturnValue(HEX_TRON_ADDR);
     const fetchMock = vi.spyOn(globalThis, 'fetch' as any);
     fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
       json: async () => ({ txID: 'a'.repeat(64) })
     } as Response);
     fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
       json: async () => ({ result: true })
     } as Response);
 
@@ -125,6 +141,8 @@ describe('TronService', () => {
     vi.spyOn(TronService, 'addressFromPrivateKey').mockReturnValue(HEX_TRON_ADDR);
     const fetchMock = vi.spyOn(globalThis, 'fetch' as any);
     fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
       json: async () => ({ result: { result: false, message: 'trigger failed' } })
     } as Response);
 
@@ -139,5 +157,31 @@ describe('TronService', () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain('trigger failed');
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('getBalance 在 HTTP 非 2xx 时会返回 0n（不中断 UI）', async () => {
+    vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: async () => ({})
+    } as Response);
+
+    const result = await TronService.getBalance('https://nile.trongrid.io', HEX_TRON_ADDR);
+    expect(result).toBe(0n);
+  });
+
+  it('probeRpc 在超时场景下应返回 ok=false 且错误为 timeout', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.spyOn(globalThis, 'fetch' as any).mockImplementation(() => new Promise(() => {}));
+
+    const p = TronService.probeRpc('https://nile.trongrid.io');
+    await vi.advanceTimersByTimeAsync(9000);
+    const result = await p;
+
+    expect(result.ok).toBe(false);
+    expect(String(result.error || '')).toMatch(/timeout/i);
+
+    fetchMock.mockRestore();
+    vi.useRealTimers();
   });
 });
