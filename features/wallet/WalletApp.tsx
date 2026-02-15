@@ -18,7 +18,7 @@ const AddTokenModal = React.lazy(() => import('./components/Modals').then(m => (
 const EditTokenModal = React.lazy(() => import('./components/Modals').then(m => ({ default: m.EditTokenModal })));
 const ParticleIntro = React.lazy(() => import('../../components/ui/ParticleIntro').then(m => ({ default: m.ParticleIntro })));
 
-const TechAlert: React.FC<{ type: 'error' | 'success'; message: string; onClose?: () => void }> = ({ type, message, onClose }) => (
+const TechAlert: React.FC<{ type: 'error' | 'success'; message: string; count?: number; onClose?: () => void }> = ({ type, message, count, onClose }) => (
   <div
     className={`
       fixed top-20 left-1/2 transform -translate-x-1/2 z-[100]
@@ -26,11 +26,18 @@ const TechAlert: React.FC<{ type: 'error' | 'success'; message: string; onClose?
       ${type === 'error' ? 'bg-white border-red-500 text-red-700' : 'bg-white border-[#0062ff] text-[#0062ff]'}
     `}
     style={{ top: 'calc(5rem + var(--safe-top))' }}
+    role="alert"
+    aria-live="polite"
   >
     <div className="flex-shrink-0 mr-3">
       {type === 'error' ? <XCircle className="w-5 h-5 text-red-500" /> : <CheckCircle className="w-5 h-5 text-[#0062ff]" />}
     </div>
     <div className="flex-1 text-xs font-black uppercase tracking-tight">{message}</div>
+    {typeof count === 'number' && count > 1 && (
+      <div className="ml-3 px-2 py-0.5 rounded-full text-[10px] font-black bg-red-50 text-red-700 border border-red-200">
+        x{count}
+      </div>
+    )}
     {onClose && (
       <button onClick={onClose} className="ml-3 p-1 rounded-md hover:bg-slate-100">
         <XCircle className="w-4 h-4 text-slate-400" />
@@ -200,7 +207,7 @@ export const WalletApp: React.FC = () => {
       <main className="flex-1 overflow-y-auto p-4 md:p-8 relative scroll-smooth">
          <div className="max-w-5xl mx-auto relative z-10">
             {localNotification && <NotificationToast message={localNotification} onClose={() => setLocalNotification(null)} />}
-            {error && <TechAlert type="error" message={error} onClose={() => setError(null)} />}
+            {error && <TechAlert type="error" message={error} count={errorObject?.count} onClose={() => setError(null)} />}
 
             <React.Suspense fallback={<div className="min-h-[320px] bg-white/70 rounded-2xl border border-slate-200" />}>
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
