@@ -73,7 +73,12 @@ export const WalletApp: React.FC = () => {
 
   const [localNotification, setLocalNotification] = React.useState<string | null>(null);
   React.useEffect(() => { if (notification) { setLocalNotification(notification); const timer = setTimeout(() => setLocalNotification(null), 5000); return () => clearTimeout(timer); } }, [notification]);
-  React.useEffect(() => { if (errorObject) { const timer = setTimeout(() => setError(null), 5000); return () => clearTimeout(timer); } }, [errorObject, setError]);
+  React.useEffect(() => {
+    if (!errorObject) return;
+    const delay = Math.max(0, errorObject.expiresAt - Date.now());
+    const timer = setTimeout(() => setError(null), delay);
+    return () => clearTimeout(timer);
+  }, [errorObject, setError]);
 
   const [isOnboardingExiting, setIsOnboardingExiting] = React.useState(false);
   const [isIntroFadingOut, setIsIntroFadingOut] = React.useState(false);

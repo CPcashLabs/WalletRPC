@@ -115,4 +115,31 @@ describe('useWalletState', () => {
     expect(result.current.activeSafeAddress).toBeNull();
     expect(result.current.view).toBe('onboarding');
   });
+
+  it('重复相同错误在冷却窗口内不会重复弹出，只延长展示时长', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-02-15T00:00:00.000Z'));
+    const { result } = renderHook(() => useWalletState(1), { wrapper: LanguageProvider });
+
+    act(() => {
+      result.current.setError('SAME_ERROR');
+    });
+    expect(result.current.error).toBe('SAME_ERROR');
+    const first = result.current.errorObject!;
+    expect(first.count).toBe(1);
+    expect(first.expiresAt).toBe(first.shownAt + 5000);
+
+    // 500ms 内重复同样错误：只刷新 expiresAt + 计数，不改变 shownAt
+    act(() => {
+      vi.advanceTimersByTime(500);
+      result.current.setError('SAME_ERROR');
+    });
+    const second = result.current.errorObject!;
+    expect(second.message).toBe('SAME_ERROR');
+    expect(second.count).toBe(2);
+    expect(second.shownAt).toBe(first.shownAt);
+    expect(second.expiresAt).toBe(Date.now() + 5000);
+
+    vi.useRealTimers();
+  });
 });

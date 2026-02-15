@@ -27,7 +27,17 @@ export const useWalletState = (initialChainId: number) => {
   const [view, setView] = useState<'onboarding' | 'intro_animation' | 'dashboard' | 'send' | 'create_safe' | 'add_safe' | 'safe_queue' | 'settings'>('onboarding');
   const [privateKeyOrPhrase, setPrivateKeyOrPhrase] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [errorObject, setErrorObject] = useState<{ message: string; timestamp: number } | null>(null);
+  const ERROR_DISPLAY_MS = 5000;
+  // 去重冷却：同样错误在该窗口内重复触发，不重复“弹出”，只延长展示时长
+  const ERROR_DEDUPE_COOLDOWN_MS = 1500;
+  type WalletErrorObject = {
+    message: string;
+    shownAt: number;
+    lastEventAt: number;
+    expiresAt: number;
+    count: number;
+  };
+  const [errorObject, setErrorObject] = useState<WalletErrorObject | null>(null);
   const [notification, setNotification] = useState<string | null>(null);
 
   // UI 弹窗与交互状态
@@ -44,8 +54,33 @@ export const useWalletState = (initialChainId: number) => {
    * - Tron 标准: m/44'/195'/0'/0/0
    * 解决：在 handleImport 中，如果检测到助记词，分别按两条路径派生，确保生成的地址与 TronLink/MetaMask 一致。
    */
+  const setError = (msg: string | null) => {
+    const now = Date.now();
+    if (!msg) {
+      setErrorObject(null);
+      return;
+    }
+    setErrorObject((prev) => {
+      if (prev && prev.message === msg && now - prev.lastEventAt <= ERROR_DEDUPE_COOLDOWN_MS) {
+        return {
+          ...prev,
+          lastEventAt: now,
+          expiresAt: now + ERROR_DISPLAY_MS,
+          count: prev.count + 1
+        };
+      }
+      return {
+        message: msg,
+        shownAt: now,
+        lastEventAt: now,
+        expiresAt: now + ERROR_DISPLAY_MS,
+        count: 1
+      };
+    });
+  };
+
   const handleImport = async (): Promise<boolean> => {
-    setErrorObject(null);
+    setError(null);
     try {
       const input = privateKeyOrPhrase.trim();
       let newWallet: ethers.Wallet | ethers.HDNodeWallet;
@@ -74,13 +109,9 @@ export const useWalletState = (initialChainId: number) => {
       
       return true;
     } catch (e) {
-      setErrorObject({ message: t('wallet.import_invalid'), timestamp: Date.now() });
+      setError(t('wallet.import_invalid'));
       return false;
     }
-  };
-
-  const setError = (msg: string | null) => {
-    setErrorObject(msg ? { message: msg, timestamp: Date.now() } : null);
   };
 
   const clearSession = () => {
