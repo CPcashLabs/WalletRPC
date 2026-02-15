@@ -243,6 +243,11 @@ export const zhSG: I18nSchema = {
   console: {
     title: "控制台",
     subtitle: "本地 HTTP 检查器：捕获本页 fetch/XHR 请求。",
+    dock_title: "HTTP 控制台",
+    dock_empty: "暂无请求。",
+    dock_hint: "点击展开。日志会一直保留到会话结束。",
+    expand: "展开",
+    minimize: "收起",
     hosts: "主机",
     events: "请求列表",
     empty: "暂无请求记录。",

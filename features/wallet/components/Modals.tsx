@@ -201,6 +201,7 @@ export const ChainModal: React.FC<ChainModalProps> = ({
               <Button
                 variant="outline"
                 className="w-full py-2.5"
+                aria-label="open-console"
                 onClick={() => {
                   if (onOpenConsole) onOpenConsole();
                   onClose();

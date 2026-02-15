@@ -243,6 +243,11 @@ export const en: I18nSchema = {
   console: {
     title: "Console",
     subtitle: "Local HTTP inspector. Captures fetch/XHR within this page.",
+    dock_title: "HTTP Console",
+    dock_empty: "No requests yet.",
+    dock_hint: "Click to expand. Logs persist until the session ends.",
+    expand: "Expand",
+    minimize: "Minimize",
     hosts: "Hosts",
     events: "Events",
     empty: "No requests captured yet.",

@@ -166,6 +166,11 @@ export interface I18nSchema {
   console: {
     title: string;
     subtitle: string;
+    dock_title: string;
+    dock_empty: string;
+    dock_hint: string;
+    expand: string;
+    minimize: string;
     hosts: string;
     events: string;
     empty: string;

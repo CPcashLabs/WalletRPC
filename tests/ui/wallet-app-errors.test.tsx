@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { act, render } from '@testing-library/react';
 import { WalletApp } from '../../features/wallet/WalletApp';
 import { LanguageProvider } from '../../contexts/LanguageContext';
+import { HttpConsoleProvider } from '../../contexts/HttpConsoleContext';
 
 vi.mock('../../features/wallet/hooks/useEvmWallet', () => ({
   useEvmWallet: vi.fn()
@@ -41,7 +42,9 @@ describe('WalletApp error auto-dismiss (dedupe-aware)', () => {
 
     render(
       <LanguageProvider>
-        <WalletApp />
+        <HttpConsoleProvider>
+          <WalletApp />
+        </HttpConsoleProvider>
       </LanguageProvider>
     );
 
@@ -90,7 +93,9 @@ describe('WalletApp error auto-dismiss (dedupe-aware)', () => {
 
     const { rerender } = render(
       <LanguageProvider>
-        <WalletApp />
+        <HttpConsoleProvider>
+          <WalletApp />
+        </HttpConsoleProvider>
       </LanguageProvider>
     );
 
@@ -110,7 +115,9 @@ describe('WalletApp error auto-dismiss (dedupe-aware)', () => {
     });
     rerender(
       <LanguageProvider>
-        <WalletApp />
+        <HttpConsoleProvider>
+          <WalletApp />
+        </HttpConsoleProvider>
       </LanguageProvider>
     );
 
@@ -129,4 +136,3 @@ describe('WalletApp error auto-dismiss (dedupe-aware)', () => {
     vi.useRealTimers();
   });
 });
-

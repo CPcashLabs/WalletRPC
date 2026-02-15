@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from './LanguageContext';
+import { ConsoleView } from '../features/wallet/components/ConsoleView';
 
 export type HttpConsoleCategory = 'rpc' | 'http';
 
@@ -22,13 +23,17 @@ export type HttpConsoleEvent = {
 type HttpConsoleContextValue = {
   enabled: boolean;
   setEnabled: (v: boolean) => void;
+  expanded: boolean;
+  setExpanded: (v: boolean) => void;
+  open: () => void;
   events: HttpConsoleEvent[];
   clear: () => void;
 };
 
 const HttpConsoleContext = createContext<HttpConsoleContextValue | null>(null);
 
-const MAX_EVENTS = 300;
+// Keep a large rolling buffer for UX while protecting memory on long sessions.
+const MAX_EVENTS = 5000;
 const MAX_BODY_CHARS = 2000;
 
 const clip = (s: string, max: number): string => (s.length > max ? `${s.slice(0, max)}...` : s);
@@ -124,6 +129,7 @@ const actionForTronPath = (path: string, t: (k: string) => string): string => {
 export const HttpConsoleProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { t } = useTranslation();
   const [enabled, setEnabled] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [events, setEvents] = useState<HttpConsoleEvent[]>([]);
 
   const fetchPatchedRef = useRef(false);
@@ -299,12 +305,23 @@ export const HttpConsoleProvider: React.FC<{ children: React.ReactNode }> = ({ c
     return {
       enabled,
       setEnabled,
+      expanded,
+      setExpanded,
+      open: () => {
+        setEnabled(true);
+        setExpanded(true);
+      },
       events,
       clear: () => setEvents([])
     };
-  }, [enabled, events]);
+  }, [enabled, expanded, events]);
 
-  return <HttpConsoleContext.Provider value={value}>{children}</HttpConsoleContext.Provider>;
+  return (
+    <HttpConsoleContext.Provider value={value}>
+      {children}
+      <HttpConsoleDock />
+    </HttpConsoleContext.Provider>
+  );
 };
 
 export const useHttpConsole = (): HttpConsoleContextValue => {
@@ -313,3 +330,57 @@ export const useHttpConsole = (): HttpConsoleContextValue => {
   return ctx;
 };
 
+const HttpConsoleDock: React.FC = () => {
+  const { t } = useTranslation();
+  const { enabled, setEnabled, expanded, setExpanded, events, open } = useHttpConsole();
+
+  // Show the dock if enabled or expanded (expanded implies enabled, but keep it robust).
+  const visible = enabled || expanded;
+  const latest = events[0];
+
+  if (!visible) return null;
+
+  return (
+    <div
+      className="fixed left-0 right-0 z-[90] px-3 sm:px-4 pb-3 pointer-events-none"
+      style={{ bottom: 'calc(0.5rem + var(--safe-bottom))' }}
+    >
+      <div className="max-w-5xl mx-auto pointer-events-auto">
+        {!expanded ? (
+          <button
+            type="button"
+            aria-label="http-console-dock"
+            onClick={() => open()}
+            className="w-full rounded-2xl border border-slate-200 bg-white/90 backdrop-blur-md shadow-xl px-4 py-3 flex items-center justify-between gap-3 hover:bg-white transition-colors"
+          >
+            <div className="min-w-0">
+              <div className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-400">
+                {t('console.dock_title')}
+              </div>
+              <div className="text-xs font-black text-slate-900 truncate">
+                {latest?.action || t('console.dock_empty')}
+              </div>
+              <div className="text-[10px] text-slate-400 font-mono truncate">
+                {latest ? `${latest.method} ${latest.host}` : t('console.dock_hint')}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <span className="text-[10px] font-black px-2 py-1 rounded-full bg-slate-900 text-white">
+                {events.length}
+              </span>
+              <span className="text-[10px] font-black uppercase tracking-widest text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-1 rounded-full">
+                {t('console.expand')}
+              </span>
+            </div>
+          </button>
+        ) : (
+          <div className="rounded-2xl border border-slate-200 bg-white/95 backdrop-blur-md shadow-2xl overflow-hidden">
+            <div className="max-h-[70vh] overflow-hidden">
+              <ConsoleView mode="dock" onMinimize={() => setExpanded(false)} />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};

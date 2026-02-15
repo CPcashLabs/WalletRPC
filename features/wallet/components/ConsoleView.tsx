@@ -20,7 +20,7 @@ const safeStringify = (v: unknown): string => {
   }
 };
 
-export const ConsoleView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+export const ConsoleView: React.FC<{ onBack?: () => void; onMinimize?: () => void; mode?: 'page' | 'dock' }> = ({ onBack, onMinimize, mode = 'page' }) => {
   const { t } = useTranslation();
   const { enabled, setEnabled, events, clear } = useHttpConsole();
 
@@ -55,13 +55,15 @@ export const ConsoleView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     <div className="space-y-6 animate-tech-in">
       <div className="flex items-center justify-between">
         <div className="flex items-center">
-          <button
-            onClick={onBack}
-            className="p-2 -ml-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-700 transition-colors mr-2"
-            aria-label="console-back"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
+          {mode === 'page' && onBack && (
+            <button
+              onClick={onBack}
+              className="p-2 -ml-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-700 transition-colors mr-2"
+              aria-label="console-back"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+          )}
           <div>
             <h2 className="text-lg font-bold text-slate-900">{t('console.title')}</h2>
             <p className="text-xs text-slate-500">{t('console.subtitle')}</p>
@@ -88,6 +90,16 @@ export const ConsoleView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           >
             {t('console.clear')}
           </Button>
+          {mode === 'dock' && onMinimize && (
+            <Button
+              variant="outline"
+              className="text-xs h-10"
+              onClick={onMinimize}
+              aria-label="console-minimize"
+            >
+              {t('console.minimize')}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -229,4 +241,3 @@ export const ConsoleView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     </div>
   );
 };
-
