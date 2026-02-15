@@ -230,4 +230,37 @@ describe('useTransactionManager', () => {
     expect(result.current.transactions[0].error).toContain('timeout');
     vi.useRealTimers();
   });
+
+  it('syncNonce: localNonceRef 已有值时不应重复请求 eth_getTransactionCount', async () => {
+    const getTransactionCount = vi.fn(async () => 99);
+    const provider = { getTransactionCount } as any;
+    const wallet = { address: '0x0000000000000000000000000000000000000001' } as any;
+
+    const { result } = renderHook(
+      () =>
+        useTransactionManager({
+          wallet,
+          tronPrivateKey: null,
+          provider,
+          activeChain: evmChain,
+          activeChainId: 199,
+          activeAccountType: 'EOA',
+          fetchData: vi.fn(),
+          setError: vi.fn(),
+          handleSafeProposal: vi.fn()
+        }),
+      { wrapper: LanguageProvider }
+    );
+
+    act(() => {
+      result.current.localNonceRef.current = 12;
+    });
+
+    await act(async () => {
+      await result.current.syncNonce();
+    });
+
+    expect(getTransactionCount).not.toHaveBeenCalled();
+    expect(result.current.localNonceRef.current).toBe(12);
+  });
 });

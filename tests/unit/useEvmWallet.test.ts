@@ -116,10 +116,19 @@ const setupMocks = (activeAccountType: 'EOA' | 'SAFE', overrides: SetupOverrides
   vi.mocked(useTransactionManager).mockReturnValue(txMgrMock as any);
   vi.mocked(useSafeManager).mockReturnValue(safeMgrMock as any);
 
-  return { stateMock, dataMock, storageMock };
+  return { stateMock, dataMock, storageMock, txMgrMock, safeMgrMock };
 };
 
 describe('useEvmWallet handleSwitchNetwork', () => {
+  it('渲染阶段不应主动触发 nonce 同步（避免重复 nonce RPC）', () => {
+    const { stateMock, txMgrMock } = setupMocks('EOA');
+    renderHook(() => useEvmWallet(), { wrapper: LanguageProvider });
+
+    // useEvmWallet 不应在渲染/挂载阶段主动调用 txMgr.syncNonce
+    expect(txMgrMock.syncNonce).not.toHaveBeenCalled();
+    expect(stateMock.setError).not.toHaveBeenCalled();
+  });
+
   it('SAFE 模式切链时重置为 EOA 并清空 activeSafeAddress', () => {
     const { stateMock } = setupMocks('SAFE');
     const { result } = renderHook(() => useEvmWallet(), { wrapper: LanguageProvider });
