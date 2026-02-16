@@ -470,23 +470,78 @@ describe('useEvmWallet handleSwitchNetwork', () => {
     expect(getBalanceSpy).toHaveBeenCalled();
   });
 
-  it('intro_animation 且首轮同步完成后 isIntroPreflightDone 置为 true', async () => {
-    setupMocks('EOA', {
+  it('intro_animation 下 EVM 探测命中时会切链且不走真实 RPC', async () => {
+    const tronActive: ChainConfig = {
+      id: 728126428,
+      name: 'TRON Nile',
+      defaultRpcUrl: 'https://nile.trongrid.io',
+      publicRpcUrls: ['https://nile.trongrid.io'],
+      currencySymbol: 'TRX',
+      chainType: 'TRON',
+      explorers: [],
+      tokens: []
+    };
+    const evmTarget: ChainConfig = {
+      id: 56,
+      name: 'BNB Smart Chain',
+      defaultRpcUrl: 'https://bsc-dataseed.binance.org',
+      publicRpcUrls: ['https://bsc-dataseed.binance.org'],
+      currencySymbol: 'BNB',
+      chainType: 'EVM',
+      explorers: [],
+      tokens: []
+    };
+    const { stateMock, storageMock } = setupMocks('EOA', {
       wallet: { address: '0x000000000000000000000000000000000000beef' },
       tronWalletAddress: 'TKxFAZWkATzrk4vXkSaCKpmiuSDavz...',
       view: 'intro_animation',
-      chainType: 'TRON'
+      activeChainId: tronActive.id
     });
+    storageMock.chains = [tronActive, evmTarget];
+
+    vi.spyOn(TronService, 'normalizeHost').mockImplementation((v) => v);
+    vi.spyOn(TronService, 'getBalance').mockResolvedValue(0n);
+    const evmBalanceSpy = vi.spyOn(ethers.JsonRpcProvider.prototype, 'getBalance').mockResolvedValue(9n);
+
+    renderHook(() => useEvmWallet(), { wrapper: LanguageProvider });
+
+    await waitFor(() => {
+      expect(stateMock.setActiveChainId).toHaveBeenCalledWith(evmTarget.id);
+    });
+    expect(evmBalanceSpy).toHaveBeenCalled();
+  });
+
+  it('intro_animation 且首轮同步完成后 isIntroPreflightDone 置为 true', async () => {
+    const tronOnly: ChainConfig = {
+      id: 3448148188,
+      name: 'TRON Mainnet',
+      defaultRpcUrl: 'https://api.trongrid.io',
+      publicRpcUrls: ['https://api.trongrid.io'],
+      currencySymbol: 'TRX',
+      chainType: 'TRON',
+      explorers: [],
+      tokens: []
+    };
+    const { storageMock } = setupMocks('EOA', {
+      wallet: { address: '0x000000000000000000000000000000000000beef' },
+      tronWalletAddress: 'TKxFAZWkATzrk4vXkSaCKpmiuSDavz...',
+      view: 'intro_animation',
+      chainType: 'TRON',
+      activeChainId: tronOnly.id
+    });
+    storageMock.chains = [tronOnly];
 
     vi.spyOn(TronService, 'normalizeHost').mockImplementation((v) => v);
     // return positive to resolve Promise.any quickly and avoid budget-timeout flakiness in CI
     vi.spyOn(TronService, 'getBalance').mockResolvedValue(1n);
+    const evmBalanceSpy = vi.spyOn(ethers.JsonRpcProvider.prototype, 'getBalance').mockResolvedValue(0n);
 
     const { result } = renderHook(() => useEvmWallet(), { wrapper: LanguageProvider });
 
     await waitFor(() => {
       expect(result.current.isIntroPreflightDone).toBe(true);
     }, { timeout: 3000 });
+    expect(evmBalanceSpy).not.toHaveBeenCalled();
   });
 
   it('非核心视图下不应触发 fetchData 事件刷新', () => {
