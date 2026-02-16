@@ -1,5 +1,7 @@
 # WalletRPC
 
+[![Coverage Gate](https://github.com/CrossPayDao/WalletRPC/actions/workflows/ci-quality-gate.yml/badge.svg?branch=main)](https://github.com/CrossPayDao/WalletRPC/actions/workflows/ci-quality-gate.yml)
+
 A zero-backend, single-file privacy wallet. No key storage, no ads or tracking, fully client-side, built for privacy-focused, self-custody users.
 
 WalletRPC is a multi-chain wallet UI that talks directly to blockchain nodes over RPC. It supports key EVM/TRON flows and Safe-style multisig operations without requiring any centralized backend services.
