@@ -324,4 +324,83 @@ describe('TronService', () => {
     fetchMock.mockRestore();
     vi.useRealTimers();
   });
+
+  it('stakeResource 在 owner 地址无效时直接失败', async () => {
+    vi.spyOn(TronService, 'addressFromPrivateKey').mockReturnValue('');
+    const fetchMock = vi.spyOn(globalThis, 'fetch' as any);
+
+    const out = await TronService.stakeResource('https://nile.trongrid.io', TEST_PRIVATE_KEY, 10n, 'ENERGY');
+    expect(out).toEqual({ success: false, error: 'Invalid owner address' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('stakeResource 在 amount 非法时返回 safe integer 错误', async () => {
+    vi.spyOn(TronService, 'addressFromPrivateKey').mockReturnValue(HEX_TRON_ADDR);
+    const out = await TronService.stakeResource(
+      'https://nile.trongrid.io',
+      TEST_PRIVATE_KEY,
+      BigInt(Number.MAX_SAFE_INTEGER) + 1n,
+      'ENERGY'
+    );
+    expect(out.success).toBe(false);
+    expect(out.error).toMatch(/safe integer/i);
+  });
+
+  it('voteWitnesses 在 hex 失败后会回退到 base58 visible=true 请求', async () => {
+    vi.spyOn(TronService, 'addressFromPrivateKey').mockReturnValue(HEX_TRON_ADDR);
+    vi.spyOn(TronService, 'isValidBase58Address').mockReturnValue(true);
+    const fetchMock = vi.spyOn(globalThis, 'fetch' as any);
+    fetchMock
+      .mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({}) } as Response)
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ txID: 'b'.repeat(64), raw_data: {} }) } as Response)
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ result: true }) } as Response);
+
+    const out = await TronService.voteWitnesses('https://nile.trongrid.io', TEST_PRIVATE_KEY, [
+      { address: 'TPYmHEhy5n8TCEfYGqW2rPxsghSfzghPDn', votes: 3 }
+    ]);
+    expect(out).toEqual({ success: true, txid: 'b'.repeat(64) });
+
+    const secondBody = JSON.parse(String(fetchMock.mock.calls[1][1]?.body ?? '{}'));
+    expect(secondBody.visible).toBe(true);
+  });
+
+  it('getRewardInfo 在前两种 body 失败时会尝试 visible=true 的 address', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch' as any);
+    fetchMock
+      .mockResolvedValueOnce({ ok: false, status: 405, json: async () => ({}) } as Response)
+      .mockResolvedValueOnce({ ok: false, status: 400, json: async () => ({}) } as Response)
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ reward: 9 }) } as Response);
+
+    const out = await TronService.getRewardInfo('https://nile.trongrid.io', HEX_TRON_ADDR);
+    expect(out).toEqual({ claimableSun: 9n, canClaim: true });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('claimReward 在网络异常时返回 claim reward failed 分支', async () => {
+    vi.spyOn(TronService, 'addressFromPrivateKey').mockReturnValue(HEX_TRON_ADDR);
+    vi.spyOn(globalThis, 'fetch' as any).mockRejectedValue(new Error('network down'));
+    const out = await TronService.claimReward('https://nile.trongrid.io', TEST_PRIVATE_KEY);
+    expect(out.success).toBe(false);
+    expect(out.error).toMatch(/network down|claim reward failed/i);
+  });
+
+  it('getTransactionInfo 在 fallback contractRet 非 SUCCESS 时返回失败', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch' as any);
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ id: 'x' }) } as Response)
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ ret: [{ contractRet: 'REVERT' }] }) } as Response);
+
+    const out = await TronService.getTransactionInfo('https://nile.trongrid.io', '0x6');
+    expect(out).toEqual({ found: true, success: false });
+  });
+
+  it('probeRpc 在返回非 block 结构时应报 Unexpected response', async () => {
+    vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ hello: 'world' })
+    } as Response);
+    const out = await TronService.probeRpc('https://nile.trongrid.io');
+    expect(out).toEqual({ ok: false, error: 'Unexpected response' });
+  });
 });
