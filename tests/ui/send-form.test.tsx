@@ -38,6 +38,22 @@ const chain: ChainConfig = {
 };
 
 const txs: TransactionRecord[] = [];
+const tronChain: ChainConfig = {
+  ...chain,
+  id: 2494104990,
+  name: 'TRON',
+  currencySymbol: 'TRX',
+  chainType: 'TRON',
+  explorers: [
+    {
+      name: 'Tronscan',
+      key: 'tronscan',
+      url: 'https://tronscan.org',
+      txPath: 'https://tronscan.org/#/transaction/{txid}',
+      addressPath: 'https://tronscan.org/#/address/{address}'
+    }
+  ]
+};
 
 describe('SendForm UI', () => {
   it('挂载时不会自动触发刷新', () => {
@@ -138,5 +154,133 @@ describe('SendForm UI', () => {
     await user.type(screen.getByPlaceholderText('0.0'), '9007199254740992.000001');
 
     expect(screen.getByRole('button', { name: 'Liquidity Shortfall' })).toBeVisible();
+  });
+
+  it('TRON 地址格式错误时应禁用发送', async () => {
+    const user = userEvent.setup();
+    renderWithProvider(
+      <SendForm
+        activeChain={tronChain}
+        tokens={[]}
+        balances={{ NATIVE: '10.00' }}
+        dataSync={syncOk}
+        activeAccountType="EOA"
+        onSend={vi.fn(async () => ({ success: true }))}
+        onBack={vi.fn()}
+        onRefresh={vi.fn()}
+        isLoading={false}
+        transactions={txs}
+      />
+    );
+
+    await user.type(screen.getByPlaceholderText('T...'), '0xdeadbeef');
+    await user.type(screen.getByPlaceholderText('0.0'), '1');
+    expect(screen.getByRole('button', { name: 'BROADCAST_TRANSACTION' })).toBeDisabled();
+  });
+
+  it('余额未知时按钮禁用，且显示同步中状态', async () => {
+    const user = userEvent.setup();
+    renderWithProvider(
+      <SendForm
+        activeChain={chain}
+        tokens={chain.tokens}
+        balances={{ NATIVE: '1.00', [chain.tokens[0].address.toLowerCase()]: '10.00' }}
+        dataSync={{ ...syncOk, tokenBalancesKnown: false, phase: 'updating' }}
+        activeAccountType="EOA"
+        onSend={vi.fn(async () => ({ success: true }))}
+        onBack={vi.fn()}
+        onRefresh={vi.fn()}
+        isLoading={false}
+        transactions={txs}
+      />
+    );
+
+    await user.selectOptions(screen.getByRole('combobox'), chain.tokens[0].address.toLowerCase());
+    expect(screen.getByRole('button', { name: 'BROADCAST_TRANSACTION' })).toBeDisabled();
+    expect(screen.getByText('Updating...')).toBeInTheDocument();
+  });
+
+  it('不足额时第一次点击仅确认，第二次点击才调用 onSend', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn(async () => ({ success: false, error: 'mock error' }));
+
+    renderWithProvider(
+      <SendForm
+        activeChain={chain}
+        tokens={[]}
+        balances={{ NATIVE: '1.00' }}
+        dataSync={syncOk}
+        activeAccountType="EOA"
+        onSend={onSend}
+        onBack={vi.fn()}
+        onRefresh={vi.fn()}
+        isLoading={false}
+        transactions={txs}
+      />
+    );
+
+    await user.type(screen.getByPlaceholderText('0x...'), '0x000000000000000000000000000000000000dEaD');
+    await user.type(screen.getByPlaceholderText('0.0'), '2');
+    const btn = screen.getByRole('button', { name: 'Liquidity Shortfall' });
+
+    await user.click(btn);
+    expect(onSend).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'PROCEED_ANYWAY_SIG' })).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'PROCEED_ANYWAY_SIG' }));
+    expect(onSend).toHaveBeenCalledTimes(1);
+  });
+
+  it('超时状态下若交易列表变为 confirmed，应自动切换为 success', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn(async () => ({ success: true, isTimeout: true, hash: '0xtimeout' }));
+    const txTimeout: TransactionRecord[] = [];
+
+    const { rerender } = renderWithProvider(
+      <SendForm
+        activeChain={chain}
+        tokens={[]}
+        balances={{ NATIVE: '10.00' }}
+        dataSync={syncOk}
+        activeAccountType="EOA"
+        onSend={onSend}
+        onBack={vi.fn()}
+        onRefresh={vi.fn()}
+        isLoading={false}
+        transactions={txTimeout}
+      />
+    );
+
+    await user.type(screen.getByPlaceholderText('0x...'), '0x000000000000000000000000000000000000dEaD');
+    await user.type(screen.getByPlaceholderText('0.0'), '1');
+    await user.click(screen.getByRole('button', { name: 'BROADCAST_TRANSACTION' }));
+    expect(await screen.findByText('Pending Validation')).toBeInTheDocument();
+
+    const confirmed: TransactionRecord[] = [{
+      id: '1',
+      chainId: 1,
+      hash: '0xtimeout',
+      status: 'confirmed',
+      timestamp: Date.now(),
+      summary: 'ok'
+    }];
+    rerender(
+      <LanguageProvider>
+        <SendForm
+          activeChain={chain}
+          tokens={[]}
+          balances={{ NATIVE: '10.00' }}
+          dataSync={syncOk}
+          activeAccountType="EOA"
+          onSend={onSend}
+          onBack={vi.fn()}
+          onRefresh={vi.fn()}
+          isLoading={false}
+          transactions={confirmed}
+        />
+      </LanguageProvider>
+    );
+
+    expect(await screen.findByText('Transmission Confirmed')).toBeInTheDocument();
   });
 });
