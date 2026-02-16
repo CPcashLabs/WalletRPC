@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ChainConfig } from '../../features/wallet/types';
 import { useTransactionManager } from '../../features/wallet/hooks/useTransactionManager';
 import { LanguageProvider } from '../../contexts/LanguageContext';
+import { TronService } from '../../services/tronService';
 
 const evmChain: ChainConfig = {
   id: 199,
@@ -358,5 +359,225 @@ describe('useTransactionManager', () => {
     });
     expect(out.success).toBe(false);
     expect(setError).toHaveBeenCalled();
+  });
+
+  it('EVM EOA 成功发送后会记录交易并递增本地 nonce', async () => {
+    const sendTransaction = vi.fn(async () => ({ hash: '0x' + '9'.repeat(64) }));
+    const provider = {
+      getTransactionCount: vi.fn(async () => 7)
+    } as any;
+    const wallet = {
+      address: '0x0000000000000000000000000000000000000001',
+      connect: vi.fn(() => ({ sendTransaction }))
+    } as any;
+    const setError = vi.fn();
+
+    const { result } = renderHook(
+      () =>
+        useTransactionManager({
+          wallet,
+          tronPrivateKey: null,
+          provider,
+          activeChain: evmChain,
+          activeChainId: evmChain.id,
+          activeAccountType: 'EOA',
+          fetchData: vi.fn(),
+          setError,
+          handleSafeProposal: vi.fn()
+        }),
+      { wrapper: LanguageProvider }
+    );
+
+    let out: any;
+    await act(async () => {
+      out = await result.current.handleSendSubmit({
+        recipient: '0x0000000000000000000000000000000000000002',
+        amount: '1',
+        asset: 'NATIVE'
+      });
+    });
+
+    expect(out).toEqual({ success: true, hash: '0x' + '9'.repeat(64) });
+    expect(provider.getTransactionCount).toHaveBeenCalledWith(wallet.address, 'pending');
+    expect(sendTransaction).toHaveBeenCalled();
+    expect(result.current.localNonceRef.current).toBe(8);
+    expect(result.current.transactions[0].status).toBe('submitted');
+  });
+
+  it('EVM 发送发生 nonce 冲突时会重置 localNonceRef', async () => {
+    const provider = {
+      getTransactionCount: vi.fn(async () => 7)
+    } as any;
+    const wallet = {
+      address: '0x0000000000000000000000000000000000000001',
+      connect: vi.fn(() => ({
+        sendTransaction: vi.fn(async () => {
+          throw new Error('nonce too low');
+        })
+      }))
+    } as any;
+    const setError = vi.fn();
+
+    const { result } = renderHook(
+      () =>
+        useTransactionManager({
+          wallet,
+          tronPrivateKey: null,
+          provider,
+          activeChain: evmChain,
+          activeChainId: evmChain.id,
+          activeAccountType: 'EOA',
+          fetchData: vi.fn(),
+          setError,
+          handleSafeProposal: vi.fn()
+        }),
+      { wrapper: LanguageProvider }
+    );
+
+    act(() => {
+      result.current.localNonceRef.current = 12;
+    });
+
+    let out: any;
+    await act(async () => {
+      out = await result.current.handleSendSubmit({
+        recipient: '0x0000000000000000000000000000000000000002',
+        amount: '1',
+        asset: 'NATIVE'
+      });
+    });
+
+    expect(out.success).toBe(false);
+    expect(result.current.localNonceRef.current).toBeNull();
+    expect(setError).toHaveBeenCalled();
+  });
+
+  it('TRON 发送成功时应追加 submitted 交易记录', async () => {
+    const tronChain = { ...evmChain, chainType: 'TRON' as const, currencySymbol: 'TRX', defaultRpcUrl: 'https://nile.trongrid.io' };
+    const wallet = { address: 'TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE' } as any;
+    const sendSpy = vi.spyOn(TronService, 'sendTransaction').mockResolvedValue({
+      success: true,
+      txid: 'a'.repeat(64)
+    });
+
+    const { result } = renderHook(
+      () =>
+        useTransactionManager({
+          wallet,
+          tronPrivateKey: '0x' + '1'.repeat(64),
+          provider: null,
+          activeChain: tronChain,
+          activeChainId: tronChain.id,
+          activeAccountType: 'EOA',
+          fetchData: vi.fn(),
+          setError: vi.fn(),
+          handleSafeProposal: vi.fn()
+        }),
+      { wrapper: LanguageProvider }
+    );
+
+    let out: any;
+    await act(async () => {
+      out = await result.current.handleSendSubmit({
+        recipient: 'TPYmHEhy5n8TCEfYGqW2rPxsghSfzghPDn',
+        amount: '1',
+        asset: 'NATIVE'
+      });
+    });
+
+    expect(out).toEqual({ success: true, hash: 'a'.repeat(64) });
+    expect(result.current.transactions[0].hash).toBe('a'.repeat(64));
+    sendSpy.mockRestore();
+  });
+
+  it('TRON 广播失败时返回失败并设置错误', async () => {
+    const tronChain = { ...evmChain, chainType: 'TRON' as const, currencySymbol: 'TRX', defaultRpcUrl: 'https://nile.trongrid.io' };
+    const wallet = { address: 'TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE' } as any;
+    const setError = vi.fn();
+    const sendSpy = vi.spyOn(TronService, 'sendTransaction').mockResolvedValue({
+      success: false,
+      error: 'RPC rejected'
+    });
+
+    const { result } = renderHook(
+      () =>
+        useTransactionManager({
+          wallet,
+          tronPrivateKey: '0x' + '1'.repeat(64),
+          provider: null,
+          activeChain: tronChain,
+          activeChainId: tronChain.id,
+          activeAccountType: 'EOA',
+          fetchData: vi.fn(),
+          setError,
+          handleSafeProposal: vi.fn()
+        }),
+      { wrapper: LanguageProvider }
+    );
+
+    let out: any;
+    await act(async () => {
+      out = await result.current.handleSendSubmit({
+        recipient: 'TPYmHEhy5n8TCEfYGqW2rPxsghSfzghPDn',
+        amount: '1',
+        asset: 'NATIVE'
+      });
+    });
+
+    expect(out.success).toBe(false);
+    expect(setError).toHaveBeenCalled();
+    sendSpy.mockRestore();
+  });
+
+  it('SAFE 模式发送代币时应调用 handleSafeProposal 并编码 transfer data', async () => {
+    const setError = vi.fn();
+    const provider = { getTransactionCount: vi.fn(async () => 0) } as any;
+    const tokenChain: ChainConfig = {
+      ...evmChain,
+      tokens: [
+        {
+          symbol: 'USDT',
+          name: 'Tether USD',
+          address: '0x00000000000000000000000000000000000000aa',
+          decimals: 6
+        }
+      ]
+    };
+    const wallet = { address: '0x0000000000000000000000000000000000000001' } as any;
+    const handleSafeProposal = vi.fn(async () => true);
+
+    const { result } = renderHook(
+      () =>
+        useTransactionManager({
+          wallet,
+          tronPrivateKey: null,
+          provider,
+          activeChain: tokenChain,
+          activeChainId: tokenChain.id,
+          activeAccountType: 'SAFE',
+          fetchData: vi.fn(),
+          setError,
+          handleSafeProposal
+        }),
+      { wrapper: LanguageProvider }
+    );
+
+    let out: any;
+    await act(async () => {
+      out = await result.current.handleSendSubmit({
+        recipient: '0x0000000000000000000000000000000000000002',
+        amount: '1.5',
+        asset: 'USDT',
+        assetAddress: tokenChain.tokens[0].address,
+        assetDecimals: 6
+      });
+    });
+
+    expect(out).toEqual({ success: true });
+    expect(handleSafeProposal).toHaveBeenCalledTimes(1);
+    const [target, value, data] = handleSafeProposal.mock.calls[0];
+    expect(target).toBe(tokenChain.tokens[0].address);
+    expect(value).toBe(0n);
+    expect(String(data)).toMatch(/^0xa9059cbb/i);
   });
 });
