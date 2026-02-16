@@ -19,12 +19,15 @@ export interface ProcessResult {
 const RECEIPT_POLL_INTERVAL_MS = 5000;
 const RECEIPT_POLL_TIMEOUT_MS = 10 * 60 * 1000;
 const RECEIPT_POLL_MAX_ATTEMPTS = 60;
+const NONCE_SYNC_RETRY_DELAYS_MS = [0, 150, 350];
 
 const getNextPollDelay = (attempts: number): number => {
   if (attempts < 6) return 5000;
   if (attempts < 18) return 15000;
   return 30000;
 };
+
+const waitMs = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 interface TransactionInput {
   recipient: string;
@@ -133,11 +136,21 @@ export const useTransactionManager = ({
     
     isSyncingRef.current = true;
     try {
-      // [RPC] 此时发起 1 次 eth_getTransactionCount
-      const n = await provider.getTransactionCount(wallet.address, 'pending');
-      localNonceRef.current = n;
+      for (let i = 0; i < NONCE_SYNC_RETRY_DELAYS_MS.length; i++) {
+        try {
+          if (NONCE_SYNC_RETRY_DELAYS_MS[i] > 0) {
+            await waitMs(NONCE_SYNC_RETRY_DELAYS_MS[i]);
+          }
+          // [RPC] 此时发起 1 次 eth_getTransactionCount
+          const n = await provider.getTransactionCount(wallet.address, 'pending');
+          localNonceRef.current = n;
+          return;
+        } catch (e) {
+          devError(`Nonce sync failed (attempt ${i + 1}/${NONCE_SYNC_RETRY_DELAYS_MS.length})`, e);
+        }
+      }
     } catch (e) {
-      devError("Nonce sync failed", e);
+      devError('Nonce sync failed (unexpected)', e);
     } finally {
       isSyncingRef.current = false;
     }

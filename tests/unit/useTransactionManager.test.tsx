@@ -265,6 +265,43 @@ describe('useTransactionManager', () => {
     expect(result.current.localNonceRef.current).toBe(12);
   });
 
+  it('syncNonce: 临时失败后应短退避重试并最终成功', async () => {
+    vi.useFakeTimers();
+    const getTransactionCount = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('network-1'))
+      .mockRejectedValueOnce(new Error('network-2'))
+      .mockResolvedValueOnce(21);
+    const provider = { getTransactionCount } as any;
+    const wallet = { address: '0x0000000000000000000000000000000000000001' } as any;
+
+    const { result } = renderHook(
+      () =>
+        useTransactionManager({
+          wallet,
+          tronPrivateKey: null,
+          provider,
+          activeChain: evmChain,
+          activeChainId: 199,
+          activeAccountType: 'EOA',
+          fetchData: vi.fn(),
+          setError: vi.fn(),
+          handleSafeProposal: vi.fn()
+        }),
+      { wrapper: LanguageProvider }
+    );
+
+    await act(async () => {
+      const p = result.current.syncNonce();
+      await vi.advanceTimersByTimeAsync(600);
+      await p;
+    });
+
+    expect(getTransactionCount).toHaveBeenCalledTimes(3);
+    expect(result.current.localNonceRef.current).toBe(21);
+    vi.useRealTimers();
+  });
+
   it('handleSendSubmit 在 EVM 缺少 wallet/provider 时返回失败并设置错误', async () => {
     const setError = vi.fn();
     const { result } = renderHook(
