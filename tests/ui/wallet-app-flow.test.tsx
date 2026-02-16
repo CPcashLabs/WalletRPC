@@ -34,14 +34,56 @@ vi.mock('../../features/wallet/components/TronFinanceView', () => ({
   TronFinanceView: ({ onBack }: any) => <button onClick={onBack}>back-from-tron</button>
 }));
 vi.mock('../../features/wallet/components/SafeViews', () => ({
-  SafeSettings: () => <div>safe-settings</div>,
-  CreateSafe: () => <div>safe-create</div>,
-  TrackSafe: () => <div>safe-track</div>
+  SafeSettings: ({ onBack, onRefreshSafeDetails, onAddOwner, onRemoveOwner, onChangeThreshold }: any) => (
+    <div>
+      <div>safe-settings</div>
+      <button onClick={onBack}>safe-settings-back</button>
+      <button onClick={() => onRefreshSafeDetails?.(true)}>safe-settings-refresh</button>
+      <button onClick={() => onAddOwner?.('0x1', 1)}>safe-settings-add-owner</button>
+      <button onClick={() => onRemoveOwner?.('0x1', 1)}>safe-settings-remove-owner</button>
+      <button onClick={() => onChangeThreshold?.(2)}>safe-settings-change-threshold</button>
+    </div>
+  ),
+  CreateSafe: ({ onCancel, onDeploy }: any) => (
+    <div>
+      <div>safe-create</div>
+      <button onClick={onCancel}>safe-create-cancel</button>
+      <button onClick={() => onDeploy?.(['0x1'], 1)}>safe-create-deploy</button>
+    </div>
+  ),
+  TrackSafe: ({ onCancel, onTrack }: any) => (
+    <div>
+      <div>safe-track</div>
+      <button onClick={onCancel}>safe-track-cancel</button>
+      <button onClick={() => onTrack?.('0x000000000000000000000000000000000000c0de')}>safe-track-submit</button>
+    </div>
+  )
 }));
 vi.mock('../../features/wallet/components/Modals', () => ({
-  ChainModal: () => <div>chain-modal</div>,
-  AddTokenModal: () => <div>add-token-modal</div>,
-  EditTokenModal: () => <div>edit-token-modal</div>
+  ChainModal: ({ onClose, onSwitchNetwork, onOpenConsole, onSave }: any) => (
+    <div>
+      <div>chain-modal</div>
+      <button onClick={() => onSwitchNetwork?.(1)}>chain-modal-switch</button>
+      <button onClick={onOpenConsole}>chain-modal-console</button>
+      <button onClick={() => onSave?.({ id: 199 })}>chain-modal-save</button>
+      <button onClick={onClose}>chain-modal-close</button>
+    </div>
+  ),
+  AddTokenModal: ({ onClose, onImport }: any) => (
+    <div>
+      <div>add-token-modal</div>
+      <button onClick={() => onImport?.('0x00000000000000000000000000000000000000aa')}>add-token-import</button>
+      <button onClick={onClose}>add-token-close</button>
+    </div>
+  ),
+  EditTokenModal: ({ onClose, onSave, onDelete }: any) => (
+    <div>
+      <div>edit-token-modal</div>
+      <button onClick={() => onSave?.({ address: '0x1' })}>edit-token-save</button>
+      <button onClick={() => onDelete?.('0x1')}>edit-token-delete</button>
+      <button onClick={onClose}>edit-token-close</button>
+    </div>
+  )
 }));
 vi.mock('../../components/ui/ParticleIntro', () => ({
   ParticleIntro: ({ fadeOut }: any) => <div>intro-{String(fadeOut)}</div>
@@ -380,5 +422,174 @@ describe('WalletApp flow', () => {
     await waitFor(() => {
       expect(screen.queryByText('hello')).not.toBeInTheDocument();
     });
+  });
+
+  it('菜单中切回 EOA 与创建/导入 safe 按钮能触发对应回调', async () => {
+    const user = userEvent.setup();
+    const useEvmWallet = await getUseEvmWalletMock();
+    const state = makeBase();
+    state.isMenuOpen = true;
+    useEvmWallet.mockReturnValue(state);
+
+    render(
+      <LanguageProvider>
+        <HttpConsoleProvider>
+          <WalletApp />
+        </HttpConsoleProvider>
+      </LanguageProvider>
+    );
+
+    const masterKeyEntries = screen.getAllByText(/Master Key/i);
+    await user.click(masterKeyEntries[1] ?? masterKeyEntries[0]);
+    expect(state.setActiveAccountType).toHaveBeenCalledWith('EOA');
+    expect(state.setIsMenuOpen).toHaveBeenCalledWith(false);
+    expect(state.setView).toHaveBeenCalledWith('dashboard');
+
+    await user.click(screen.getByText(/DEPLO_NEW|Deploy New/i));
+    expect(state.setView).toHaveBeenCalledWith('create_safe');
+
+    await user.click(screen.getByText(/IMPORT/i));
+    expect(state.setView).toHaveBeenCalledWith('add_safe');
+  });
+
+  it('删除当前激活 safe 时会回退到 EOA 并清空 activeSafeAddress', async () => {
+    const user = userEvent.setup();
+    const useEvmWallet = await getUseEvmWalletMock();
+    const state = makeBase();
+    state.isMenuOpen = true;
+    state.activeSafeAddress = '0x000000000000000000000000000000000000c0de';
+    state.trackedSafes = [{ address: '0x000000000000000000000000000000000000c0de', name: 'Safe_c0de', chainId: 199 }];
+    useEvmWallet.mockReturnValue(state);
+
+    render(
+      <LanguageProvider>
+        <HttpConsoleProvider>
+          <WalletApp />
+        </HttpConsoleProvider>
+      </LanguageProvider>
+    );
+
+    const removeBtn = screen.getAllByRole('button').find((btn) =>
+      btn.className.includes('hover:text-red-500')
+    ) as HTMLButtonElement;
+    await user.click(removeBtn);
+
+    expect(state.setTrackedSafes).toHaveBeenCalled();
+    expect(state.setActiveAccountType).toHaveBeenCalledWith('EOA');
+    expect(state.setActiveSafeAddress).toHaveBeenCalledWith(null);
+    expect(state.setView).toHaveBeenCalledWith('dashboard');
+  });
+
+  it('send/tron/settings/create/add 视图中的回调能回到 dashboard 或触发动作', async () => {
+    const user = userEvent.setup();
+    const useEvmWallet = await getUseEvmWalletMock();
+
+    const sendState = makeBase();
+    sendState.view = 'send';
+    useEvmWallet.mockReturnValue(sendState);
+    const r1 = render(
+      <LanguageProvider>
+        <HttpConsoleProvider>
+          <WalletApp />
+        </HttpConsoleProvider>
+      </LanguageProvider>
+    );
+    await user.click(screen.getByText('back-dashboard'));
+    expect(sendState.setView).toHaveBeenCalledWith('dashboard');
+    r1.unmount();
+
+    const tronState = makeBase();
+    tronState.view = 'tron_finance';
+    tronState.activeChain = { ...tronState.activeChain, chainType: 'TRON' };
+    useEvmWallet.mockReturnValue(tronState);
+    const r2 = render(
+      <LanguageProvider>
+        <HttpConsoleProvider>
+          <WalletApp />
+        </HttpConsoleProvider>
+      </LanguageProvider>
+    );
+    await user.click(screen.getByText('back-from-tron'));
+    expect(tronState.setView).toHaveBeenCalledWith('dashboard');
+    r2.unmount();
+
+    const settingsState = makeBase();
+    settingsState.view = 'settings';
+    settingsState.safeDetails = { owners: [], threshold: 1, nonce: 0 };
+    useEvmWallet.mockReturnValue(settingsState);
+    const r3 = render(
+      <LanguageProvider>
+        <HttpConsoleProvider>
+          <WalletApp />
+        </HttpConsoleProvider>
+      </LanguageProvider>
+    );
+    await user.click(screen.getByText('safe-settings-back'));
+    await user.click(screen.getByText('safe-settings-refresh'));
+    await user.click(screen.getByText('safe-settings-add-owner'));
+    await user.click(screen.getByText('safe-settings-remove-owner'));
+    await user.click(screen.getByText('safe-settings-change-threshold'));
+    expect(settingsState.setView).toHaveBeenCalledWith('dashboard');
+    expect(settingsState.refreshSafeDetails).toHaveBeenCalled();
+    expect(settingsState.addOwnerTx).toHaveBeenCalled();
+    expect(settingsState.removeOwnerTx).toHaveBeenCalled();
+    expect(settingsState.changeThresholdTx).toHaveBeenCalled();
+    r3.unmount();
+
+    const createState = makeBase();
+    createState.view = 'create_safe';
+    useEvmWallet.mockReturnValue(createState);
+    const r4 = render(
+      <LanguageProvider>
+        <HttpConsoleProvider>
+          <WalletApp />
+        </HttpConsoleProvider>
+      </LanguageProvider>
+    );
+    await user.click(screen.getByText('safe-create-cancel'));
+    await user.click(screen.getByText('safe-create-deploy'));
+    expect(createState.setView).toHaveBeenCalledWith('dashboard');
+    expect(createState.deploySafe).toHaveBeenCalled();
+    r4.unmount();
+
+    const addState = makeBase();
+    addState.view = 'add_safe';
+    useEvmWallet.mockReturnValue(addState);
+    render(
+      <LanguageProvider>
+        <HttpConsoleProvider>
+          <WalletApp />
+        </HttpConsoleProvider>
+      </LanguageProvider>
+    );
+    await user.click(screen.getByText('safe-track-cancel'));
+    await user.click(screen.getByText('safe-track-submit'));
+    expect(addState.setView).toHaveBeenCalledWith('dashboard');
+    expect(addState.handleTrackSafe).toHaveBeenCalled();
+  });
+
+  it('modal 回调能够触发对应钱包操作', async () => {
+    const user = userEvent.setup();
+    const useEvmWallet = await getUseEvmWalletMock();
+    const state = makeBase();
+    state.isChainModalOpen = true;
+    useEvmWallet.mockReturnValue(state);
+
+    render(
+      <LanguageProvider>
+        <HttpConsoleProvider>
+          <WalletApp />
+        </HttpConsoleProvider>
+      </LanguageProvider>
+    );
+
+    await user.click(await screen.findByText('chain-modal-switch'));
+    await user.click(screen.getByText('chain-modal-console'));
+    await user.click(screen.getByText('chain-modal-save'));
+    await user.click(screen.getByText('chain-modal-close'));
+
+    expect(state.handleSwitchNetwork).toHaveBeenCalledWith(1);
+    expect(state.handleSaveChain).toHaveBeenCalled();
+    expect(state.setIsChainModalOpen).toHaveBeenCalledWith(false);
   });
 });
