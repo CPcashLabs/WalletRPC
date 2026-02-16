@@ -162,4 +162,94 @@ describe('useSafeManager', () => {
       expect(params.setView).toHaveBeenCalledWith('dashboard');
     });
   });
+
+  it('handleSafeProposal 在当前钱包不是 owner 时抛错', async () => {
+    const params = baseParams();
+    const safeContract = {
+      nonce: vi.fn(async () => 1n),
+      getOwners: vi.fn(async () => ['0x0000000000000000000000000000000000000001']),
+      getThreshold: vi.fn(async () => 1n),
+      getTransactionHash: vi.fn(async () => '0x' + 'ab'.repeat(32))
+    };
+    mocked.contractCtor.mockImplementation(() => safeContract as any);
+
+    const { result } = renderHook(() => useSafeManager(params), { wrapper: LanguageProvider });
+    await expect(
+      result.current.handleSafeProposal('0x0000000000000000000000000000000000000001', 0n, '0x')
+    ).rejects.toThrow();
+  });
+
+  it('deploySafe 在 tx.wait 失败时会回填错误', async () => {
+    const params = baseParams();
+    const createProxyWithNonce = Object.assign(
+      vi.fn(async () => ({ hash: '0xdeploy', wait: vi.fn(async () => { throw new Error('wait failed'); }) })),
+      { staticCall: vi.fn(async () => '0x000000000000000000000000000000000000c0de') }
+    );
+    mocked.interfaceCtor.mockImplementation(() => ({ encodeFunctionData: vi.fn(() => '0xsetup') }) as any);
+    mocked.contractCtor.mockImplementation(() => ({ createProxyWithNonce }) as any);
+    vi.spyOn(FeeService, 'getOptimizedFeeData').mockResolvedValue({} as any);
+    vi.spyOn(FeeService, 'buildOverrides').mockReturnValue({} as any);
+
+    const { result } = renderHook(() => useSafeManager(params), { wrapper: LanguageProvider });
+    await act(async () => {
+      await result.current.deploySafe([params.wallet!.address], 1);
+    });
+
+    await waitFor(() => {
+      expect(params.setError).toHaveBeenCalled();
+    });
+  });
+
+  it('deploySafe 在工厂调用失败时会直接报错', async () => {
+    const params = baseParams();
+    const createProxyWithNonce = Object.assign(
+      vi.fn(async () => { throw new Error('factory failed'); }),
+      { staticCall: vi.fn(async () => '0x000000000000000000000000000000000000c0de') }
+    );
+    mocked.interfaceCtor.mockImplementation(() => ({ encodeFunctionData: vi.fn(() => '0xsetup') }) as any);
+    mocked.contractCtor.mockImplementation(() => ({ createProxyWithNonce }) as any);
+    vi.spyOn(FeeService, 'getOptimizedFeeData').mockResolvedValue({} as any);
+    vi.spyOn(FeeService, 'buildOverrides').mockReturnValue({} as any);
+
+    const { result } = renderHook(() => useSafeManager(params), { wrapper: LanguageProvider });
+    await act(async () => {
+      await result.current.deploySafe([params.wallet!.address], 1);
+    });
+    expect(params.setError).toHaveBeenCalled();
+  });
+
+  it('removeOwnerTx 在目标 owner 不存在时抛错', async () => {
+    const params = baseParams();
+    mocked.contractCtor.mockImplementation(() => ({
+      getOwners: vi.fn(async () => [params.wallet!.address]),
+      interface: { encodeFunctionData: vi.fn(() => '0xremove') }
+    }) as any);
+
+    const { result } = renderHook(() => useSafeManager(params), { wrapper: LanguageProvider });
+    await expect(result.current.removeOwnerTx('0x0000000000000000000000000000000000000001', 1)).rejects.toThrow();
+  });
+
+  it('changeThresholdTx 与 removeOwnerTx 会编码函数并走提议路径', async () => {
+    const params = baseParams();
+    const encodeSpy = vi.fn(() => '0xencoded');
+    const proposalSafeContract = {
+      nonce: vi.fn(async () => 1n),
+      getOwners: vi.fn(async () => [params.wallet!.address]),
+      getThreshold: vi.fn(async () => 2n),
+      getTransactionHash: vi.fn(async () => '0x' + 'ab'.repeat(32)),
+      interface: { encodeFunctionData: encodeSpy }
+    };
+    mocked.contractCtor
+      .mockImplementationOnce(() => ({
+        getOwners: vi.fn(async () => [params.wallet!.address, '0x0000000000000000000000000000000000000002']),
+        interface: { encodeFunctionData: encodeSpy }
+      }) as any)
+      .mockImplementationOnce(() => proposalSafeContract as any)
+      .mockImplementationOnce(() => ({ interface: { encodeFunctionData: encodeSpy } }) as any)
+      .mockImplementationOnce(() => proposalSafeContract as any);
+
+    const { result } = renderHook(() => useSafeManager(params), { wrapper: LanguageProvider });
+    await expect(result.current.removeOwnerTx(params.wallet!.address, 1)).rejects.toThrow();
+    await expect(result.current.changeThresholdTx(2)).rejects.toThrow();
+  });
 });
