@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { LanguageProvider } from '../../contexts/LanguageContext';
 import { HttpConsoleProvider } from '../../contexts/HttpConsoleContext';
@@ -329,5 +329,56 @@ describe('WalletApp flow', () => {
 
     expect(screen.queryByText('Safe_c0de')).not.toBeInTheDocument();
     expect(await screen.findByText('back-from-tron')).toBeInTheDocument();
+  });
+
+  it('错误提示可手动关闭，并调用 setError(null)', async () => {
+    const user = userEvent.setup();
+    const useEvmWallet = await getUseEvmWalletMock();
+    const state = makeBase();
+    state.error = 'boom';
+    state.errorObject = {
+      message: 'boom',
+      shownAt: Date.now(),
+      lastEventAt: Date.now(),
+      expiresAt: Date.now() + 10_000,
+      count: 1
+    };
+    useEvmWallet.mockReturnValue(state);
+
+    render(
+      <LanguageProvider>
+        <HttpConsoleProvider>
+          <WalletApp />
+        </HttpConsoleProvider>
+      </LanguageProvider>
+    );
+
+    const alert = await screen.findByRole('alert');
+    const closeBtn = within(alert).getByRole('button');
+    await user.click(closeBtn);
+    expect(state.setError).toHaveBeenCalledWith(null);
+  });
+
+  it('通知提示可手动关闭并从页面移除', async () => {
+    const user = userEvent.setup();
+    const useEvmWallet = await getUseEvmWalletMock();
+    const state = makeBase();
+    state.notification = 'hello';
+    useEvmWallet.mockReturnValue(state);
+
+    render(
+      <LanguageProvider>
+        <HttpConsoleProvider>
+          <WalletApp />
+        </HttpConsoleProvider>
+      </LanguageProvider>
+    );
+
+    const msg = await screen.findByText('hello');
+    const closeBtn = msg.parentElement?.querySelector('button') as HTMLButtonElement;
+    await user.click(closeBtn);
+    await waitFor(() => {
+      expect(screen.queryByText('hello')).not.toBeInTheDocument();
+    });
   });
 });
