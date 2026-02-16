@@ -56,7 +56,7 @@ const setupTronServiceSpies = () => {
   vi.spyOn(TronService, 'getTransactionInfo').mockResolvedValue({ found: true, success: true });
 };
 
-const buildHook = () => {
+const buildHook = (overrides?: Partial<Parameters<typeof useTronFinanceManager>[0]>) => {
   const setError = vi.fn();
   const setNotification = vi.fn();
   const addTransactionRecord = vi.fn();
@@ -71,7 +71,8 @@ const buildHook = () => {
       setError,
       setNotification,
       addTransactionRecord,
-      refreshWalletData
+      refreshWalletData,
+      ...overrides
     })
   );
 
@@ -181,5 +182,89 @@ describe('useTronFinanceManager', () => {
     expect(result.current.oneClickProgress.stage).toBe('failed');
     expect(result.current.oneClickProgress.steps[1]?.status).toBe('failed');
     expect(setError).toHaveBeenCalledWith('Stake amount must be greater than 0');
+  });
+
+  it('缺少私钥时 claimReward 直接失败并提示', async () => {
+    const { result, setError } = buildHook({ tronPrivateKey: null });
+
+    let ok = true;
+    await act(async () => {
+      ok = await result.current.claimReward();
+    });
+
+    expect(ok).toBe(false);
+    expect(setError).toHaveBeenCalledWith('TRON private key missing');
+  });
+
+  it('stakeResource 数量 <=0 时会被参数校验拦截', async () => {
+    const { result, setError } = buildHook();
+
+    let ok = true;
+    await act(async () => {
+      ok = await result.current.stakeResource(0n, 'ENERGY');
+    });
+
+    expect(ok).toBe(false);
+    expect(setError).toHaveBeenCalledWith('Stake amount must be greater than 0');
+  });
+
+  it('signing 中触发其他动作会被并发保护拦截', async () => {
+    const deferred = (() => {
+      let resolve: (value: { success: boolean; txid: string }) => void = () => {};
+      const promise = new Promise<{ success: boolean; txid: string }>((r) => {
+        resolve = r;
+      });
+      return { promise, resolve };
+    })();
+    vi.mocked(TronService.claimReward).mockImplementation(() => deferred.promise);
+
+    const { result, setError } = buildHook();
+
+    let claimPromise: Promise<boolean> | null = null;
+    act(() => {
+      claimPromise = result.current.claimReward();
+    });
+
+    await waitFor(() => {
+      expect(result.current.action.phase).toBe('signing');
+    });
+
+    let voteOk = true;
+    await act(async () => {
+      voteOk = await result.current.voteWitnesses([{ address: witnessA.address, votes: 1 }]);
+    });
+
+    expect(voteOk).toBe(false);
+    expect(setError).toHaveBeenCalledWith('A TRON action is still processing. Please wait for confirmation.');
+
+    deferred.resolve({ success: true, txid: 'tx-claim-pending' });
+    let claimOk = false;
+    await act(async () => {
+      claimOk = await (claimPromise as Promise<boolean>);
+    });
+    expect(claimOk).toBe(true);
+  });
+
+  it('runOneClick 在无历史投票对象时失败并标记 vote 步骤', async () => {
+    vi.mocked(TronService.getVoteStatus).mockResolvedValue([]);
+    const { result, setError } = buildHook();
+
+    await waitFor(() => {
+      expect(result.current.witnesses.length).toBeGreaterThan(0);
+    });
+
+    let ok = true;
+    await act(async () => {
+      ok = await result.current.runOneClick({
+        resource: 'ENERGY',
+        stakeAmountSun: 1_000_000n,
+        votes: []
+      });
+    });
+
+    expect(ok).toBe(false);
+    expect(result.current.oneClickProgress.stage).toBe('failed');
+    expect(result.current.oneClickProgress.steps[2]?.status).toBe('failed');
+    expect(setError).toHaveBeenCalledWith('No previous voted SR found. One-click re-vote requires historical voted witnesses.');
   });
 });
