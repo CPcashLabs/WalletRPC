@@ -10,6 +10,7 @@ import { useHttpConsole } from '../../contexts/HttpConsoleContext';
 import { WalletOnboarding } from './components/WalletOnboarding';
 const WalletDashboard = React.lazy(() => import('./components/WalletDashboard').then(m => ({ default: m.WalletDashboard })));
 const SendForm = React.lazy(() => import('./components/SendForm').then(m => ({ default: m.SendForm })));
+const TronFinanceView = React.lazy(() => import('./components/TronFinanceView').then(m => ({ default: m.TronFinanceView })));
 const SafeSettings = React.lazy(() => import('./components/SafeViews').then(m => ({ default: m.SafeSettings })));
 const CreateSafe = React.lazy(() => import('./components/SafeViews').then(m => ({ default: m.CreateSafe })));
 const TrackSafe = React.lazy(() => import('./components/SafeViews').then(m => ({ default: m.TrackSafe })));
@@ -20,29 +21,32 @@ const ParticleIntro = React.lazy(() => import('../../components/ui/ParticleIntro
 
 const TechAlert: React.FC<{ type: 'error' | 'success'; message: string; count?: number; onClose?: () => void }> = ({ type, message, count, onClose }) => (
   <div
-    className={`
-      fixed top-20 left-1/2 transform -translate-x-1/2 z-[100]
-      flex items-center px-4 py-3 rounded-xl shadow-2xl border backdrop-blur-md animate-tech-in w-[min(420px,90vw)]
-      ${type === 'error' ? 'bg-white border-red-500 text-red-700' : 'bg-white border-[#0062ff] text-[#0062ff]'}
-    `}
-    style={{ top: 'calc(5rem + var(--safe-top))' }}
+    className="fixed inset-x-0 top-0 z-[120] px-3 sm:px-0 flex justify-center pointer-events-none"
+    style={{ paddingTop: 'calc(var(--safe-top) + 4.5rem)' }}
     role="alert"
     aria-live="polite"
   >
-    <div className="flex-shrink-0 mr-3">
-      {type === 'error' ? <XCircle className="w-5 h-5 text-red-500" /> : <CheckCircle className="w-5 h-5 text-[#0062ff]" />}
-    </div>
-    <div className="flex-1 text-xs font-black uppercase tracking-tight">{message}</div>
-    {typeof count === 'number' && count > 1 && (
-      <div className="ml-3 px-2 py-0.5 rounded-full text-[10px] font-black bg-red-50 text-red-700 border border-red-200">
-        x{count}
+    <div
+      className={`
+        pointer-events-auto w-full max-w-[420px] max-h-[40svh] overflow-y-auto flex items-start px-4 py-3 rounded-xl shadow-2xl border backdrop-blur-md animate-tech-in
+        ${type === 'error' ? 'bg-white border-red-500 text-red-700' : 'bg-white border-[#0062ff] text-[#0062ff]'}
+      `}
+    >
+      <div className="flex-shrink-0 mr-3 mt-0.5">
+        {type === 'error' ? <XCircle className="w-5 h-5 text-red-500" /> : <CheckCircle className="w-5 h-5 text-[#0062ff]" />}
       </div>
-    )}
-    {onClose && (
-      <button onClick={onClose} className="ml-3 p-1 rounded-md hover:bg-slate-100">
-        <XCircle className="w-4 h-4 text-slate-400" />
-      </button>
-    )}
+      <div className="flex-1 min-w-0 text-xs font-black uppercase tracking-tight text-center sm:text-left break-words">{message}</div>
+      {typeof count === 'number' && count > 1 && (
+        <div className="ml-3 px-2 py-0.5 rounded-full text-[10px] font-black bg-red-50 text-red-700 border border-red-200 flex-shrink-0">
+          x{count}
+        </div>
+      )}
+      {onClose && (
+        <button onClick={onClose} className="ml-3 p-1 rounded-md hover:bg-slate-100 flex-shrink-0">
+          <XCircle className="w-4 h-4 text-slate-400" />
+        </button>
+      )}
+    </div>
   </div>
 );
 
@@ -76,7 +80,8 @@ export const WalletApp: React.FC = () => {
     isChainModalOpen, setIsChainModalOpen, isAddTokenModalOpen, setIsAddTokenModalOpen, tokenToEdit, setTokenToEdit, balance, tokenBalances, sync, transactions,
     safeDetails, isDeployingSafe, trackedSafes, setTrackedSafes, privateKeyOrPhrase, setPrivateKeyOrPhrase, handleImport,
     handleSendSubmit, confirmAddToken, handleUpdateToken, handleRemoveToken, handleSaveChain,
-    handleTrackSafe, handleSwitchNetwork, handleLogout, handleRefreshData, refreshSafeDetails, deploySafe, addOwnerTx, removeOwnerTx, changeThresholdTx, setError
+    handleTrackSafe, handleSwitchNetwork, handleLogout, handleRefreshData, handleOpenTronFinance, refreshSafeDetails, deploySafe, addOwnerTx, removeOwnerTx, changeThresholdTx, setError,
+    tronFinance
   } = useEvmWallet();
 
   const [localNotification, setLocalNotification] = React.useState<string | null>(null);
@@ -130,7 +135,7 @@ export const WalletApp: React.FC = () => {
   }
 
   return (
-    <div className="min-h-[100svh] bg-[#f8fafc] text-slate-900 font-sans flex flex-col animate-in fade-in duration-700 overflow-hidden">
+    <div className="min-h-[100svh] bg-[#f8fafc] text-slate-900 font-sans flex flex-col animate-in fade-in duration-700 overflow-x-hidden">
       <header className="bg-white/80 border-b border-slate-200 sticky top-0 z-40 px-4 md:px-8 h-16 flex items-center justify-between shadow-sm backdrop-blur-md flex-shrink-0">
          <div className="flex items-center space-x-4">
              <div className="hidden lg:flex items-center mr-4 border-r border-slate-100 pr-6">
@@ -193,15 +198,23 @@ export const WalletApp: React.FC = () => {
          </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto p-4 md:p-8 relative scroll-smooth">
+      <main className="flex-1 min-h-0 overflow-y-auto p-4 md:p-8 relative scroll-smooth touch-pan-y">
          <div className="max-w-5xl mx-auto relative z-10">
             {localNotification && <NotificationToast message={localNotification} onClose={() => setLocalNotification(null)} />}
             {error && <TechAlert type="error" message={error} count={errorObject?.count} onClose={() => setError(null)} />}
 
 	            <React.Suspense fallback={<div className="min-h-[320px] bg-white/70 rounded-2xl border border-slate-200" />}>
 	            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-	               {view === 'dashboard' && <><WalletDashboard balance={balance} dataSync={sync} activeChain={activeChain} chains={chains} address={activeAddress || ''} isLoading={isLoading} onRefresh={handleRefreshData} onSend={() => setView('send')} activeAccountType={activeAccountType} onViewSettings={() => setView('settings')} tokens={activeChainTokens} tokenBalances={tokenBalances} onAddToken={() => setIsAddTokenModalOpen(true)} onEditToken={setTokenToEdit} transactions={transactions} /><div className="mt-12 mb-6 text-center opacity-20"><p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.4em] italic">{t('wallet.disclaimer')}</p></div></>}
+	               {view === 'dashboard' && <><WalletDashboard balance={balance} dataSync={sync} activeChain={activeChain} chains={chains} address={activeAddress || ''} isLoading={isLoading} onRefresh={handleRefreshData} onSend={() => setView('send')} onOpenTronFinance={handleOpenTronFinance} activeAccountType={activeAccountType} onViewSettings={() => setView('settings')} tokens={activeChainTokens} tokenBalances={tokenBalances} onAddToken={() => setIsAddTokenModalOpen(true)} onEditToken={setTokenToEdit} transactions={transactions} /><div className="mt-12 mb-6 text-center opacity-20"><p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.4em] italic">{t('wallet.disclaimer')}</p></div></>}
 	               {view === 'send' && <SendForm activeChain={activeChain} tokens={activeChainTokens} balances={{ ...tokenBalances, NATIVE: balance }} dataSync={sync} activeAccountType={activeAccountType} onSend={handleSendSubmit} onBack={() => setView('dashboard')} onRefresh={handleRefreshData} isLoading={isLoading} transactions={transactions} />}
+                 {view === 'tron_finance' && activeChain.chainType === 'TRON' && (
+                   <TronFinanceView
+                     activeChain={activeChain}
+                     isLoading={isLoading}
+                     manager={tronFinance}
+                     onBack={() => setView('dashboard')}
+                   />
+                 )}
 	               {view === 'settings' && safeDetails && (
 	                 <SafeSettings
 	                   safeDetails={safeDetails}

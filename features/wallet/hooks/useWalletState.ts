@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ethers } from 'ethers';
 import { TronService } from '../../../services/tronService';
 import { TokenConfig } from '../types';
@@ -24,7 +24,9 @@ export const useWalletState = (initialChainId: number) => {
   const [activeChainId, setActiveChainId] = useState<number>(initialChainId);
 
   // UI 表现层状态
-  const [view, setView] = useState<'onboarding' | 'intro_animation' | 'dashboard' | 'send' | 'create_safe' | 'add_safe' | 'settings'>('onboarding');
+  const [view, setView] = useState<
+    'onboarding' | 'intro_animation' | 'dashboard' | 'send' | 'create_safe' | 'add_safe' | 'settings' | 'tron_finance'
+  >('onboarding');
   const [privateKeyOrPhrase, setPrivateKeyOrPhrase] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const ERROR_DISPLAY_MS = 5000;
@@ -56,7 +58,7 @@ export const useWalletState = (initialChainId: number) => {
    * - Tron 标准: m/44'/195'/0'/0/0
    * 解决：在 handleImport 中，如果检测到助记词，分别按两条路径派生，确保生成的地址与 TronLink/MetaMask 一致。
    */
-  const setError = (msg: string | null) => {
+  const setError = useCallback((msg: string | null) => {
     const now = Date.now();
     if (!msg) {
       setErrorObject(null);
@@ -86,7 +88,7 @@ export const useWalletState = (initialChainId: number) => {
         count: 1
       };
     });
-  };
+  }, []);
 
   const handleImport = async (): Promise<boolean> => {
     setError(null);

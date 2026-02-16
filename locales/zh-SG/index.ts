@@ -308,9 +308,16 @@ export const zhSG: I18nSchema = {
     },
     tron: {
       getaccount: "查询 TRON 账户余额/状态。",
+      getaccountresource: "查询 TRON 账户资源使用（能量/带宽）。",
+      getreward: "查询可领取治理奖励。",
       triggerconstantcontract: "读取 TRC20/合约状态（常量调用）。",
       triggersmartcontract: "生成 TRC20/合约交易数据。",
       createtransaction: "生成 TRX 转账交易数据。",
+      freezebalancev2: "生成 TRON 质押交易（Stake 2.0）。",
+      unfreezebalancev2: "生成 TRON 解质押交易（Stake 2.0）。",
+      withdrawexpireunfreeze: "提取已解锁的 TRON 解质押资金。",
+      withdrawbalance: "领取 TRON 投票奖励。",
+      votewitnessaccount: "生成超级代表投票交易。",
       broadcasttransaction: "广播已签名的 TRON 交易。",
       gettransactioninfobyid: "查询 TRON 交易确认状态。",
       probe: "探测 TRON RPC 健康状态。"

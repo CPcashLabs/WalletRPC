@@ -2,6 +2,8 @@
 import { ethers } from 'ethers';
 import bs58 from 'bs58';
 import { devError } from './logger';
+import { TronResourceType } from '../features/wallet/types';
+import { TRON_WITNESS_WHITELIST } from '../features/wallet/tronWitnessWhitelist';
 
 const bytesToHex = (bytes: ArrayLike<number>): string => {
   return `0x${Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')}`;
@@ -44,6 +46,73 @@ const postJson = async <T>(url: string, body: unknown, timeoutMs: number = 8000)
     throw new Error('Invalid JSON response');
   }
 };
+
+const postJsonFirstSuccess = async <T>(
+  requests: Array<{ url: string; body: unknown; timeoutMs?: number }>
+): Promise<T> => {
+  let lastError: unknown = null;
+  for (const req of requests) {
+    try {
+      return await postJson<T>(req.url, req.body, req.timeoutMs);
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('All endpoint attempts failed');
+};
+
+type TronTxResult = { success: boolean; txid?: string; error?: string };
+
+const toTxPayload = (raw: any): any => {
+  if (!raw) throw new Error('Empty transaction payload');
+  if (raw.transaction) return raw.transaction;
+  if (raw.txID && raw.raw_data) return raw;
+  throw new Error('Invalid transaction payload');
+};
+
+const parseApiError = (raw: any): string => {
+  const msg = raw?.message || raw?.Error || raw?.code || 'Unknown error';
+  const decoded = tryDecodeHexAscii(msg) || tryDecodeBase64Ascii(msg);
+  return decoded || String(msg);
+};
+
+const signAndBroadcast = async (baseUrl: string, privateKey: string, txPayload: any): Promise<TronTxResult> => {
+  const transaction = toTxPayload(txPayload);
+  if (!transaction.txID) throw new Error('Missing txID');
+
+  const signingKey = new ethers.SigningKey(privateKey);
+  const signature = signingKey.sign(`0x${transaction.txID}`);
+  const sigHex =
+    signature.r.slice(2) + signature.s.slice(2) + (signature.v - 27).toString(16).padStart(2, '0');
+  const signedTx = { ...transaction, signature: [sigHex] };
+  const broadcastResult = await postJson<any>(`${baseUrl}/wallet/broadcasttransaction`, signedTx);
+
+  if (broadcastResult.result) {
+    return { success: true, txid: transaction.txID };
+  }
+  return { success: false, error: parseApiError(broadcastResult) };
+};
+
+const toResource = (resource: TronResourceType): 'ENERGY' | 'BANDWIDTH' => {
+  return resource === 'ENERGY' ? 'ENERGY' : 'BANDWIDTH';
+};
+
+const toSafeAmountNumber = (amount: bigint): number => {
+  const n = Number(amount);
+  if (!Number.isSafeInteger(n) || n <= 0) {
+    throw new Error('Amount must be a positive safe integer');
+  }
+  return n;
+};
+
+const TRON_WITNESS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const tronWitnessCache = new Map<
+  string,
+  {
+    expiresAt: number;
+    witnesses: Array<{ address: string; name: string; website?: string; description?: string; isActive: boolean }>;
+  }
+>();
 
 const tryDecodeHexAscii = (s: unknown): string | null => {
   if (typeof s !== 'string') return null;
@@ -169,17 +238,324 @@ export const TronService = {
     }
   },
 
+  getWitnessWhitelist: () => {
+    return TRON_WITNESS_WHITELIST.filter((w) => w.isActive);
+  },
+
+  getNodeWitnesses: async (
+    host: string
+  ): Promise<Array<{ address: string; name: string; website?: string; description?: string; isActive: boolean }>> => {
+    const baseUrl = TronService.normalizeHost(host);
+    const now = Date.now();
+    const cached = tronWitnessCache.get(baseUrl);
+    if (cached && cached.expiresAt > now) {
+      return cached.witnesses;
+    }
+    try {
+      const data = await postJsonFirstSuccess<any>([
+        { url: `${baseUrl}/wallet/listwitnesses`, body: {} },
+        { url: `${baseUrl}/wallet/listWitnesses`, body: {} }
+      ]);
+      const list = Array.isArray(data?.witnesses) ? data.witnesses : [];
+      const witnesses = list
+        .map((w: any) => {
+          const rawAddr = String(w?.address || '');
+          const addr = rawAddr.startsWith('T')
+            ? rawAddr
+            : TronService.fromHexAddress(`0x${rawAddr.replace(/^0x/i, '')}`);
+          const url = typeof w?.url === 'string' ? w.url : '';
+          const label = url || `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+          return {
+            address: addr,
+            name: label,
+            website: url || undefined,
+            description: 'RPC witness list',
+            isActive: true
+          };
+        })
+        .filter((w: any) => TronService.isValidBase58Address(w.address));
+      if (witnesses.length > 0) {
+        tronWitnessCache.set(baseUrl, {
+          expiresAt: now + TRON_WITNESS_CACHE_TTL_MS,
+          witnesses
+        });
+      }
+      return witnesses;
+    } catch (e) {
+      devError('TRON getNodeWitnesses failed', e);
+      if (cached?.witnesses?.length) return cached.witnesses;
+      return [];
+    }
+  },
+
+  getAccountResources: async (
+    host: string,
+    address: string
+  ): Promise<{
+    energyLimit: number;
+    energyUsed: number;
+    freeNetLimit: number;
+    freeNetUsed: number;
+    netLimit: number;
+    netUsed: number;
+    tronPowerLimit: number;
+    tronPowerUsed: number;
+  }> => {
+    const baseUrl = TronService.normalizeHost(host);
+    const result = await postJson<any>(`${baseUrl}/wallet/getaccountresource`, {
+      address: TronService.toHexAddress(address),
+      visible: false
+    });
+    return {
+      energyLimit: Number(result?.EnergyLimit || 0),
+      energyUsed: Number(result?.EnergyUsed || 0),
+      freeNetLimit: Number(result?.freeNetLimit || 0),
+      freeNetUsed: Number(result?.freeNetUsed || 0),
+      netLimit: Number(result?.NetLimit || 0),
+      netUsed: Number(result?.NetUsed || 0),
+      tronPowerLimit: Number(result?.tronPowerLimit || 0),
+      tronPowerUsed: Number(result?.tronPowerUsed || 0)
+    };
+  },
+
+  getCanWithdrawUnfreeze: async (host: string, address: string): Promise<bigint> => {
+    const baseUrl = TronService.normalizeHost(host);
+    try {
+      const result = await postJson<any>(`${baseUrl}/wallet/getcanwithdrawunfreezeamount`, {
+        owner_address: TronService.toHexAddress(address).replace('0x', ''),
+        visible: false
+      });
+      return BigInt(result?.amount || 0);
+    } catch (e) {
+      devError('TRON getCanWithdrawUnfreeze failed', e);
+      return 0n;
+    }
+  },
+
+  stakeResource: async (
+    host: string,
+    privateKey: string,
+    amountSun: bigint,
+    resource: TronResourceType
+  ): Promise<TronTxResult> => {
+    const baseUrl = TronService.normalizeHost(host);
+    const ownerAddress = TronService.addressFromPrivateKey(privateKey);
+    const ownerHex = TronService.toHexAddress(ownerAddress).replace('0x', '');
+    if (!ownerHex) return { success: false, error: 'Invalid owner address' };
+    try {
+      const tx = await postJson<any>(`${baseUrl}/wallet/freezebalancev2`, {
+        owner_address: ownerHex,
+        frozen_balance: toSafeAmountNumber(amountSun),
+        resource: toResource(resource),
+        visible: false
+      });
+      if (tx?.result?.result === false) return { success: false, error: parseApiError(tx) };
+      return await signAndBroadcast(baseUrl, privateKey, tx);
+    } catch (e: any) {
+      devError('TRON stakeResource failed', e);
+      return { success: false, error: e?.message || 'stake failed' };
+    }
+  },
+
+  unstakeResource: async (
+    host: string,
+    privateKey: string,
+    amountSun: bigint,
+    resource: TronResourceType
+  ): Promise<TronTxResult> => {
+    const baseUrl = TronService.normalizeHost(host);
+    const ownerAddress = TronService.addressFromPrivateKey(privateKey);
+    const ownerHex = TronService.toHexAddress(ownerAddress).replace('0x', '');
+    if (!ownerHex) return { success: false, error: 'Invalid owner address' };
+    try {
+      const tx = await postJson<any>(`${baseUrl}/wallet/unfreezebalancev2`, {
+        owner_address: ownerHex,
+        unfreeze_balance: toSafeAmountNumber(amountSun),
+        resource: toResource(resource),
+        visible: false
+      });
+      if (tx?.result?.result === false) return { success: false, error: parseApiError(tx) };
+      return await signAndBroadcast(baseUrl, privateKey, tx);
+    } catch (e: any) {
+      devError('TRON unstakeResource failed', e);
+      return { success: false, error: e?.message || 'unstake failed' };
+    }
+  },
+
+  withdrawUnfreeze: async (host: string, privateKey: string): Promise<TronTxResult> => {
+    const baseUrl = TronService.normalizeHost(host);
+    const ownerAddress = TronService.addressFromPrivateKey(privateKey);
+    const ownerHex = TronService.toHexAddress(ownerAddress).replace('0x', '');
+    if (!ownerHex) return { success: false, error: 'Invalid owner address' };
+    try {
+      const tx = await postJson<any>(`${baseUrl}/wallet/withdrawexpireunfreeze`, {
+        owner_address: ownerHex,
+        visible: false
+      });
+      if (tx?.result?.result === false) return { success: false, error: parseApiError(tx) };
+      return await signAndBroadcast(baseUrl, privateKey, tx);
+    } catch (e: any) {
+      devError('TRON withdrawUnfreeze failed', e);
+      return { success: false, error: e?.message || 'withdraw unfreeze failed' };
+    }
+  },
+
+  voteWitnesses: async (
+    host: string,
+    privateKey: string,
+    votes: Array<{ address: string; votes: number }>
+  ): Promise<TronTxResult> => {
+    const baseUrl = TronService.normalizeHost(host);
+    const ownerAddress = TronService.addressFromPrivateKey(privateKey);
+    const ownerHex = TronService.toHexAddress(ownerAddress).replace('0x', '');
+    if (!ownerHex) return { success: false, error: 'Invalid owner address' };
+    const normalizedVotesHex = votes
+      .filter((v) => Number.isFinite(v.votes) && v.votes > 0)
+      .map((v) => ({
+        vote_address: TronService.toHexAddress(v.address).replace('0x', ''),
+        vote_count: Math.floor(v.votes)
+      }))
+      .filter((v) => !!v.vote_address && v.vote_count > 0);
+    const normalizedVotesBase58 = votes
+      .filter((v) => Number.isFinite(v.votes) && v.votes > 0)
+      .map((v) => ({
+        vote_address: v.address,
+        vote_count: Math.floor(v.votes)
+      }))
+      .filter((v) => TronService.isValidBase58Address(v.vote_address) && v.vote_count > 0);
+    if (normalizedVotesHex.length === 0) return { success: false, error: 'Vote count must be greater than 0' };
+    try {
+      const tx = await postJsonFirstSuccess<any>([
+        {
+          url: `${baseUrl}/wallet/votewitnessaccount`,
+          body: {
+            owner_address: ownerHex,
+            votes: normalizedVotesHex,
+            visible: false
+          }
+        },
+        {
+          url: `${baseUrl}/wallet/votewitnessaccount`,
+          body: {
+            owner_address: ownerAddress,
+            votes: normalizedVotesBase58,
+            visible: true
+          }
+        }
+      ]);
+      if (tx?.result?.result === false) return { success: false, error: parseApiError(tx) };
+      return await signAndBroadcast(baseUrl, privateKey, tx);
+    } catch (e: any) {
+      devError('TRON voteWitnesses failed', e);
+      return { success: false, error: e?.message || 'vote failed' };
+    }
+  },
+
+  getVoteStatus: async (
+    host: string,
+    address: string
+  ): Promise<Array<{ address: string; votes: number }>> => {
+    const baseUrl = TronService.normalizeHost(host);
+    try {
+      const account = await postJson<any>(`${baseUrl}/wallet/getaccount`, {
+        address: TronService.toHexAddress(address),
+        visible: false
+      });
+      const votes = Array.isArray(account?.votes) ? account.votes : [];
+      return votes
+        .map((v: any) => ({
+          address: TronService.fromHexAddress(`0x${String(v?.vote_address || '')}`),
+          votes: Number(v?.vote_count || 0)
+        }))
+        .filter((v: any) => !!v.address && Number.isFinite(v.votes));
+    } catch (e) {
+      devError('TRON getVoteStatus failed', e);
+      return [];
+    }
+  },
+
+  getRewardInfo: async (
+    host: string,
+    address: string
+  ): Promise<{ claimableSun: bigint; canClaim: boolean }> => {
+    const baseUrl = TronService.normalizeHost(host);
+    try {
+      const hexAddress = TronService.toHexAddress(address).replace('0x', '');
+      const result = await postJsonFirstSuccess<any>([
+        {
+          url: `${baseUrl}/wallet/getReward`,
+          body: { address: hexAddress, visible: false }
+        },
+        {
+          url: `${baseUrl}/wallet/getReward`,
+          body: { owner_address: hexAddress, visible: false }
+        },
+        {
+          url: `${baseUrl}/wallet/getReward`,
+          body: { address, visible: true }
+        }
+      ]);
+      const reward = BigInt(result?.reward || 0);
+      return { claimableSun: reward, canClaim: reward > 0n };
+    } catch (e) {
+      devError('TRON getRewardInfo failed', e);
+      return { claimableSun: 0n, canClaim: false };
+    }
+  },
+
+  claimReward: async (host: string, privateKey: string): Promise<TronTxResult> => {
+    const baseUrl = TronService.normalizeHost(host);
+    const ownerAddress = TronService.addressFromPrivateKey(privateKey);
+    const ownerHex = TronService.toHexAddress(ownerAddress).replace('0x', '');
+    if (!ownerHex) return { success: false, error: 'Invalid owner address' };
+    try {
+      const tx = await postJson<any>(`${baseUrl}/wallet/withdrawbalance`, {
+        owner_address: ownerHex,
+        visible: false
+      });
+      if (tx?.result?.result === false) return { success: false, error: parseApiError(tx) };
+      return await signAndBroadcast(baseUrl, privateKey, tx);
+    } catch (e: any) {
+      devError('TRON claimReward failed', e);
+      return { success: false, error: e?.message || 'claim reward failed' };
+    }
+  },
+
   /**
    * 查询交易是否已上链以及执行结果
    */
   getTransactionInfo: async (host: string, txid: string): Promise<{ found: boolean; success?: boolean }> => {
     try {
       const baseUrl = TronService.normalizeHost(host);
-      const result = await postJson<any>(`${baseUrl}/walletsolidity/gettransactioninfobyid`, { value: txid });
+      // Prefer fullnode endpoint first for fresher data, then fallback to solidity endpoint.
+      const result = await postJsonFirstSuccess<any>([
+        { url: `${baseUrl}/wallet/gettransactioninfobyid`, body: { value: txid } },
+        { url: `${baseUrl}/walletsolidity/gettransactioninfobyid`, body: { value: txid } }
+      ]);
       if (!result || Object.keys(result).length === 0) return { found: false };
-      const receiptResult = result.receipt?.result;
-      if (receiptResult && receiptResult !== 'SUCCESS') return { found: true, success: false };
-      return { found: true, success: true };
+
+      const receiptResult = String(result.receipt?.result || '').toUpperCase();
+      if (receiptResult) {
+        if (receiptResult !== 'SUCCESS') return { found: true, success: false };
+        return { found: true, success: true };
+      }
+
+      // Some TRON nodes return transaction info with blockNumber but without receipt.result.
+      // Treat it as confirmed unless a later probe reports explicit failure.
+      if (typeof result.blockNumber === 'number' && result.blockNumber >= 0) {
+        return { found: true, success: true };
+      }
+
+      // Fallback: probe transaction object and read contractRet.
+      const tx = await postJson<any>(`${baseUrl}/wallet/gettransactionbyid`, { value: txid });
+      if (!tx || Object.keys(tx).length === 0) return { found: false };
+      const contractRet = String(tx?.ret?.[0]?.contractRet || '').toUpperCase();
+      if (contractRet) {
+        if (contractRet === 'SUCCESS') return { found: true, success: true };
+        if (contractRet !== 'SUCCESS') return { found: true, success: false };
+      }
+      // Found but still not finalized.
+      return { found: true };
     } catch (e) {
       return { found: false };
     }

@@ -308,9 +308,16 @@ export const en: I18nSchema = {
     },
     tron: {
       getaccount: "Fetch TRON account balance/state.",
+      getaccountresource: "Fetch TRON account resource usage (energy/bandwidth).",
+      getreward: "Fetch claimable governance reward.",
       triggerconstantcontract: "Read TRC20/contract state (constant call).",
       triggersmartcontract: "Create a TRC20/contract transaction payload.",
       createtransaction: "Create a TRX transfer transaction payload.",
+      freezebalancev2: "Create a TRON stake transaction (Stake 2.0).",
+      unfreezebalancev2: "Create a TRON unstake transaction (Stake 2.0).",
+      withdrawexpireunfreeze: "Withdraw unlocked TRON unstake balance.",
+      withdrawbalance: "Claim TRON voting rewards.",
+      votewitnessaccount: "Create a witness voting transaction.",
       broadcasttransaction: "Broadcast a signed TRON transaction.",
       gettransactioninfobyid: "Check TRON transaction confirmation status.",
       probe: "Probe TRON RPC endpoint health."

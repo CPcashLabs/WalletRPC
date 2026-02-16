@@ -27,6 +27,7 @@ interface WalletDashboardProps {
   onAddToken: () => void;
   onEditToken: (token: TokenConfig) => void;
   transactions: TransactionRecord[];
+  onOpenTronFinance?: () => void;
 }
 
 export const WalletDashboard: React.FC<WalletDashboardProps> = ({
@@ -44,7 +45,8 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
   tokenBalances,
   onAddToken,
   onEditToken,
-  transactions
+  transactions,
+  onOpenTronFinance
 }) => {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
@@ -178,10 +180,15 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
 	          )}
           
 	          <div className="relative z-10 mt-auto">
-	            <div className={`grid gap-4 ${activeAccountType === 'SAFE' ? 'grid-cols-2 max-w-[420px]' : 'grid-cols-1 max-w-[200px]'}`}>
+	            <div className={`grid gap-4 ${activeAccountType === 'SAFE' ? 'grid-cols-2 max-w-[420px]' : 'grid-cols-1 max-w-[420px]'}`}>
 	              <Button onClick={onSend} className="w-full h-12 text-sm font-black bg-[#0062ff] text-white shadow-lg" icon={<Zap className="w-4 h-4" />}>
 	                {t('tx.send_btn')}
 	              </Button>
+                {activeChain.chainType === 'TRON' && onOpenTronFinance && (
+                  <Button onClick={onOpenTronFinance} variant="outline" className="w-full h-12 text-sm font-black">
+                    TRON Finance
+                  </Button>
+                )}
 	              {activeAccountType === 'SAFE' && activeChain.chainType !== 'TRON' && (
 	                <>
 	                  <Button onClick={onViewSettings} variant="outline" className="w-full h-12 font-black uppercase">{t('safe.mod_btn')}</Button>

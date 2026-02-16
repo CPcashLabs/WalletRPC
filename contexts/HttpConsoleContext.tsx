@@ -223,9 +223,16 @@ const actionForTronPath = (path: string, t: (k: string) => string): string => {
   const clean = path.replace(/^\/+/, '').toLowerCase();
   const keyMap: Record<string, string> = {
     'wallet/getaccount': 'console.tron.getaccount',
+    'wallet/getaccountresource': 'console.tron.getaccountresource',
+    'wallet/getreward': 'console.tron.getreward',
     'wallet/triggerconstantcontract': 'console.tron.triggerconstantcontract',
     'wallet/triggersmartcontract': 'console.tron.triggersmartcontract',
     'wallet/createtransaction': 'console.tron.createtransaction',
+    'wallet/freezebalancev2': 'console.tron.freezebalancev2',
+    'wallet/unfreezebalancev2': 'console.tron.unfreezebalancev2',
+    'wallet/withdrawexpireunfreeze': 'console.tron.withdrawexpireunfreeze',
+    'wallet/withdrawbalance': 'console.tron.withdrawbalance',
+    'wallet/votewitnessaccount': 'console.tron.votewitnessaccount',
     'wallet/broadcasttransaction': 'console.tron.broadcasttransaction',
     'walletsolidity/gettransactioninfobyid': 'console.tron.gettransactioninfobyid'
   };

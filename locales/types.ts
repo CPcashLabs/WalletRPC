@@ -231,9 +231,16 @@ export interface I18nSchema {
     };
     tron: {
       getaccount: string;
+      getaccountresource: string;
+      getreward: string;
       triggerconstantcontract: string;
       triggersmartcontract: string;
       createtransaction: string;
+      freezebalancev2: string;
+      unfreezebalancev2: string;
+      withdrawexpireunfreeze: string;
+      withdrawbalance: string;
+      votewitnessaccount: string;
       broadcasttransaction: string;
       gettransactioninfobyid: string;
       probe: string;

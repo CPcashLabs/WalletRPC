@@ -6,6 +6,7 @@ import { useWalletState } from './useWalletState';
 import { useWalletData } from './useWalletData';
 import { useTransactionManager } from './useTransactionManager';
 import { useSafeManager } from './useSafeManager';
+import { useTronFinanceManager } from './useTronFinanceManager';
 import { ChainConfig, TokenConfig } from '../types';
 import { ERC20_ABI } from '../config';
 import { useTranslation } from '../../../contexts/LanguageContext';
@@ -114,6 +115,7 @@ export const useEvmWallet = () => {
 
   const autoDetectRanRef = useRef(false);
   const autoDetectingRef = useRef(false);
+  const coreViewFetchKeyRef = useRef<string | null>(null);
   const [isAutoDetectingChain, setIsAutoDetectingChain] = useState(false);
   const [isIntroPreflightDone, setIsIntroPreflightDone] = useState(false);
 
@@ -170,6 +172,17 @@ export const useEvmWallet = () => {
     setTrackedSafes, setActiveAccountType, setActiveSafeAddress,
     setView, setNotification, setError,
     addTransactionRecord: txMgr.addTransactionRecord
+  });
+
+  const tronFinance = useTronFinanceManager({
+    activeChain,
+    activeAddress,
+    tronPrivateKey,
+    enabled: view === 'tron_finance',
+    setError,
+    setNotification,
+    addTransactionRecord: txMgr.addTransactionRecord,
+    refreshWalletData: fetchData
   });
 
   useEffect(() => { 
@@ -256,11 +269,13 @@ export const useEvmWallet = () => {
     if (!wallet) {
       autoDetectRanRef.current = false;
       autoDetectingRef.current = false;
+      coreViewFetchKeyRef.current = null;
       setIsAutoDetectingChain(false);
       setIsIntroPreflightDone(false);
       return;
     }
     autoDetectRanRef.current = false;
+    coreViewFetchKeyRef.current = null;
     setIsIntroPreflightDone(false);
   }, [wallet]);
 
@@ -268,9 +283,24 @@ export const useEvmWallet = () => {
   // To avoid a "double fetch" (default chain then detected chain), we gate the initial fetch until detection completes.
   useEffect(() => {
     const isCoreView = view === 'intro_animation' || view === 'dashboard';
-    if (!wallet || !isCoreView) return;
+    if (!wallet || !isCoreView) {
+      coreViewFetchKeyRef.current = null;
+      return;
+    }
     if (autoDetectingRef.current || isAutoDetectingChain) return;
 
+    // Event-driven refresh only:
+    // trigger once when entering core view / switching chain / switching account context.
+    const eventKey = [
+      wallet.address.toLowerCase(),
+      view,
+      String(activeChainId),
+      activeAccountType,
+      activeSafeAddress?.toLowerCase() || '',
+      activeChain.chainType
+    ].join('|');
+    if (coreViewFetchKeyRef.current === eventKey) return;
+    coreViewFetchKeyRef.current = eventKey;
     fetchData(false);
     // Do not proactively sync EOA nonce on render. Nonce is only required when broadcasting a tx,
     // and useTransactionManager already syncs it on-demand. This avoids unnecessary nonce RPC.
@@ -328,6 +358,11 @@ export const useEvmWallet = () => {
     return fetchData(true);
   }, [fetchData]);
 
+  const handleOpenTronFinance = useCallback(() => {
+    if (activeChain.chainType !== 'TRON') return;
+    setView('tron_finance');
+  }, [activeChain.chainType, setView]);
+
   const confirmAddToken = async (address: string) => {
     if (!provider || !address) return;
     if (!ethers.isAddress(address)) {
@@ -379,8 +414,9 @@ export const useEvmWallet = () => {
 
   return { 
     ...state, ...dataLayer, ...txMgr, ...safeMgr, ...storage,
+    tronFinance,
     activeChain, activeAddress, activeChainTokens, provider,
-    handleSaveChain, handleTrackSafe, handleSwitchNetwork, handleLogout, handleRefreshData, confirmAddToken, handleUpdateToken, handleRemoveToken,
+    handleSaveChain, handleTrackSafe, handleSwitchNetwork, handleLogout, handleRefreshData, handleOpenTronFinance, confirmAddToken, handleUpdateToken, handleRemoveToken,
     currentNonce: safeDetails?.nonce || 0,
     isIntroPreflightDone
   };

@@ -75,3 +75,30 @@ export interface SafeDetails {
   threshold: number;
   nonce: number;
 }
+
+export type TronResourceType = 'ENERGY' | 'BANDWIDTH';
+
+export interface TronStakePosition {
+  resource: TronResourceType;
+  stakedSun: bigint;
+}
+
+export interface TronVoteItem {
+  address: string;
+  name?: string;
+  votes: number;
+}
+
+export interface TronRewardState {
+  claimableSun: bigint;
+  canClaim: boolean;
+}
+
+export type TronFinanceActionPhase = 'idle' | 'signing' | 'submitted' | 'confirmed' | 'failed';
+
+export interface TronFinanceActionState {
+  phase: TronFinanceActionPhase;
+  step?: 'CLAIM_REWARD' | 'STAKE_RESOURCE' | 'VOTE_WITNESS';
+  txid?: string;
+  error?: string;
+}
