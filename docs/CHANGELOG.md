@@ -3,6 +3,19 @@
 本文件记录面向产品与用户的关键变更，用于统一认知与验收范围。
 注意：本项目坚持 **RPC-only、后台 0 依赖、零遥测**。任何变更不得突破该原则。
 
+## 0.2.1（Beta）
+
+### 新增
+- Coverage gate badge in `README.md`, linked to the repository Actions coverage workflow.
+
+### 修复
+- Stabilized `useEvmWallet` unit tests in CI by fixing per-test mock lifecycle cleanup and removing leaked real-RPC calls in intro preflight cases.
+- Fixed intermittent Vitest unhandled exception during coverage runs (`invalid BytesLike value`) caused by escaped EVM probe requests in tests.
+
+### 变更
+- Coverage quality gate baseline is now aligned with the current accepted run and locked against regression.
+- Branch coverage gate raised and enforced at `>= 85%` for CI.
+
 ## 0.2.0（Beta）
 
 ### 新增

@@ -19,6 +19,37 @@
 
 ---
 
+## v0.2.1（Beta）- 发布候选
+- 发布时间：2026-02-16 20:13（+08:00）
+- 发布 commit：`to be resolved by tag v0.2.1`
+- 版本号变更：v0.2.0 -> v0.2.1
+
+### 代码级变更范围（自上次发布以来）
+- 基准（上次发布 commit）：`ad1e9fd`
+- 本次区间：`ad1e9fd..HEAD`
+- 提交摘要（已入库）：
+  - `b564e7c test: harden useEvmWallet coverage against unhandled RPC errors`
+  - `497ae9c test: fix flaky useEvmWallet CI failures`
+  - `de698c8 test: stabilize useEvmWallet tests with per-case mock cleanup`
+  - `ad1e9fd ci: set current coverage as baseline`
+- 关键文件范围（本次候选）：
+  - `tests/unit/useEvmWallet.test.ts`
+  - `.ci/coverage-baseline.json`
+  - `README.md`
+
+### 关键新增功能说明（面向用户/产品）
+- CI coverage gate is now enforced with branch coverage >= 85%.
+- Coverage status visibility improved via README badge.
+
+### 致命 bug 修复说明（最近提交/候选）
+- Bug: intermittent unhandled exception (`invalid BytesLike value`) during coverage runs.
+  - 现象/影响：Vitest reported an unhandled runtime error and could fail CI even when all tests passed.
+  - 触发条件：real EVM probe requests escaped from intro preflight test execution path.
+  - 修复方式：isolated intro preflight tests from real RPC paths and hardened per-test mock/timer/global cleanup.
+  - 回归测试：`tests/unit/useEvmWallet.test.ts`
+
+---
+
 ## v0.2.0（Beta）- 发布候选
 - 发布时间：2026-02-16 11:56（+08:00）
 - 发布 commit：`待发布（提交后填写 git rev-parse --short HEAD）`
