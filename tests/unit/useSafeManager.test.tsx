@@ -252,4 +252,66 @@ describe('useSafeManager', () => {
     await expect(result.current.removeOwnerTx(params.wallet!.address, 1)).rejects.toThrow();
     await expect(result.current.changeThresholdTx(2)).rejects.toThrow();
   });
+
+  it('并发提交 proposal 时第二次调用应返回 busy 错误', async () => {
+    const params = baseParams();
+    const deferred = (() => {
+      let resolve: (v: number) => void = () => {};
+      const promise = new Promise<number>((r) => {
+        resolve = r;
+      });
+      return { promise, resolve };
+    })();
+    const safeContract = {
+      nonce: vi.fn(() => deferred.promise),
+      getOwners: vi.fn(async () => [params.wallet!.address]),
+      getThreshold: vi.fn(async () => 2n),
+      getTransactionHash: vi.fn(async () => '0x' + 'ab'.repeat(32))
+    };
+    mocked.contractCtor.mockImplementation(() => safeContract as any);
+
+    const { result } = renderHook(() => useSafeManager(params), { wrapper: LanguageProvider });
+
+    const p1 = result.current.handleSafeProposal('0x0000000000000000000000000000000000000001', 0n, '0x');
+    await expect(
+      result.current.handleSafeProposal('0x0000000000000000000000000000000000000001', 0n, '0x')
+    ).rejects.toThrow();
+
+    deferred.resolve(1);
+    await expect(p1).rejects.toThrow();
+  });
+
+  it('deploySafe 在缺少 wallet/provider 时直接返回', async () => {
+    const params = baseParams();
+    params.wallet = null;
+
+    const { result } = renderHook(() => useSafeManager(params), { wrapper: LanguageProvider });
+    await act(async () => {
+      await result.current.deploySafe(['0x0000000000000000000000000000000000000001'], 1);
+    });
+
+    expect(params.addTransactionRecord).not.toHaveBeenCalled();
+    expect(params.setError).not.toHaveBeenCalled();
+  });
+
+  it('deploySafe 未预测到地址时不应切换 active safe', async () => {
+    const params = baseParams();
+    const createProxyWithNonce = Object.assign(
+      vi.fn(async () => ({ hash: '0xdeploy', wait: vi.fn(async () => ({})) })),
+      { staticCall: vi.fn(async () => null) }
+    );
+    mocked.interfaceCtor.mockImplementation(() => ({ encodeFunctionData: vi.fn(() => '0xsetup') }) as any);
+    mocked.contractCtor.mockImplementation(() => ({ createProxyWithNonce }) as any);
+    vi.spyOn(FeeService, 'getOptimizedFeeData').mockResolvedValue({} as any);
+    vi.spyOn(FeeService, 'buildOverrides').mockReturnValue({} as any);
+
+    const { result } = renderHook(() => useSafeManager(params), { wrapper: LanguageProvider });
+    await act(async () => {
+      await result.current.deploySafe([params.wallet!.address], 1);
+    });
+
+    expect(params.setActiveSafeAddress).not.toHaveBeenCalled();
+    expect(params.setActiveAccountType).not.toHaveBeenCalledWith('SAFE');
+  });
+
 });
