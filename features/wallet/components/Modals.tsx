@@ -183,7 +183,7 @@ export const ChainModal: React.FC<ChainModalProps> = ({
                    <select className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-base font-medium outline-none" value={config.defaultExplorerKey || initialConfig.explorers[0].key} onChange={(e) => setConfig({ ...config, defaultExplorerKey: e.target.value })}>
                       {initialConfig.explorers.map(e => <option key={e.key} value={e.key}>{e.name}</option>)}
                    </select>
-                   {activeExplorer && activeExplorer.url && <a href={activeExplorer.url} target="_blank" rel="noreferrer" className="flex items-center text-xs text-indigo-600 hover:text-indigo-800 font-medium"><span>{t('settings.open_website')}</span><ExternalLink className="w-3 h-3 ml-1" /></a>}
+                   {activeExplorer && activeExplorer.url && <a href={activeExplorer.url} target="_blank" rel="noopener noreferrer" className="flex items-center text-xs text-indigo-600 hover:text-indigo-800 font-medium"><span>{t('settings.open_website')}</span><ExternalLink className="w-3 h-3 ml-1" /></a>}
                  </div>
                ) : <div className="text-sm text-slate-400 italic">{t('settings.no_explorers')}</div>}
             </div>
@@ -224,7 +224,7 @@ export const ChainModal: React.FC<ChainModalProps> = ({
 	                        <div><label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">{t('settings.chain_id')}</label><div className="font-mono text-sm text-slate-700 font-medium">{initialConfig.id}</div></div>
 	                        <div><label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">{t('settings.currency')}</label><div className="font-mono text-sm text-slate-700 font-medium">{initialConfig.currencySymbol}</div></div>
 	                      </div>
-	                      <div className="pt-2 border-t border-slate-200 mt-2"><a href={PROJECT_REPO_URL} target="_blank" rel="noreferrer" className="flex items-center text-[10px] text-slate-400 hover:text-indigo-600 transition-colors"><Github className="w-3 h-3 mr-1.5" /><span>{t('settings.contribute')}</span></a></div>
+	                      <div className="pt-2 border-t border-slate-200 mt-2"><a href={PROJECT_REPO_URL} target="_blank" rel="noopener noreferrer" className="flex items-center text-[10px] text-slate-400 hover:text-indigo-600 transition-colors"><Github className="w-3 h-3 mr-1.5" /><span>{t('settings.contribute')}</span></a></div>
 	                  </div>
 	               </div>
 	             )}
@@ -265,7 +265,7 @@ export const AddTokenModal: React.FC<AddTokenModalProps> = ({ isOpen, onClose, o
 	          <div className="bg-slate-50 p-3 rounded-lg text-xs text-slate-500 leading-relaxed border border-slate-100">{t('settings.local_storage_hint')}</div>
 	          <div><label className="text-xs font-bold text-slate-500 block mb-1.5">{t('settings.contract_address')}</label><input className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-base font-mono outline-none" placeholder="0x..." value={address} onChange={e => setAddress(e.target.value)} autoFocus /></div>
 	          <Button onClick={() => onImport(address)} isLoading={isImporting} className="w-full py-2.5" disabled={!address}>{t('settings.import_token_btn')}</Button>
-	          <div className="pt-2 border-t border-slate-50 mt-2"><a href={PROJECT_REPO_URL} target="_blank" rel="noreferrer" className="flex items-center justify-center text-xs text-indigo-600 font-medium gap-1.5"><Github className="w-3.5 h-3.5" /><span>{t('settings.github_add')}</span></a></div>
+	          <div className="pt-2 border-t border-slate-50 mt-2"><a href={PROJECT_REPO_URL} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center text-xs text-indigo-600 font-medium gap-1.5"><Github className="w-3.5 h-3.5" /><span>{t('settings.github_add')}</span></a></div>
 	        </div>
 	      </div>
 	    </div>

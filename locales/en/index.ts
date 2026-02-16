@@ -29,7 +29,7 @@ export const en: I18nSchema = {
   },
   wallet: {
     title: "Wallet RPC",
-    intro: "High-performance Node Access",
+    intro: "Privacy-first decentralized RPC wallet",
     connect_title: "Initialize Secure Context",
     connect_desc: "AES-256 local decryption of your master keys.",
     disclaimer: "Experimental build. User assumes all operational risks.",
@@ -64,7 +64,9 @@ export const en: I18nSchema = {
     token_import_failed: "Failed to import token.",
     token_updated: "Token updated",
     token_removed: "Token removed",
-    data_sync_fault: "Data synchronization fault"
+    data_sync_fault: "Data synchronization fault",
+    sync_updating: "Updating...",
+    sync_failed_tap_refresh: "Update failed. Tap refresh."
     ,
     import_invalid: "Invalid Key/Mnemonic"
   },

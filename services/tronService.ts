@@ -134,7 +134,9 @@ export const TronService = {
       return BigInt(account.balance || 0);
     } catch (e) { 
       devError("Tron getBalance failed", e);
-      return 0n; 
+      // Important: do not masquerade failures as 0 balance. Callers should handle the error
+      // and decide whether to keep last-known values or show a loading/error state.
+      throw e instanceof Error ? e : new Error(String(e));
     }
   },
 
@@ -162,7 +164,8 @@ export const TronService = {
       return 0n;
     } catch (e) {
       devError("TRC20 balance fetch failed", e);
-      return 0n;
+      // Same reasoning as getBalance(): a fetch failure must not look like a real 0 balance.
+      throw e instanceof Error ? e : new Error(String(e));
     }
   },
 

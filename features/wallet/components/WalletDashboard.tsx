@@ -9,9 +9,11 @@ import { getExplorerLink } from '../utils';
 import { useTranslation } from '../../../contexts/LanguageContext';
 import { APP_VERSION } from '../../../config/app';
 import QRCode from 'react-qr-code';
+import { WalletDataSyncState } from '../hooks/useWalletData';
 
 interface WalletDashboardProps {
   balance: string;
+  dataSync: WalletDataSyncState;
   activeChain: ChainConfig;
   chains: ChainConfig[];
   address: string;
@@ -29,6 +31,7 @@ interface WalletDashboardProps {
 
 export const WalletDashboard: React.FC<WalletDashboardProps> = ({
   balance,
+  dataSync,
   activeChain,
   chains,
   address,
@@ -47,6 +50,10 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
   const [copied, setCopied] = useState(false);
   const [isQrOpen, setIsQrOpen] = useState(false);
   const getTokenBalance = (token: TokenConfig) => tokenBalances[token.address.toLowerCase()] ?? tokenBalances[token.symbol] ?? '0';
+  const balanceKnown = dataSync?.balanceKnown ?? true;
+  const tokensKnown = dataSync?.tokenBalancesKnown ?? true;
+  const isUpdating = dataSync?.phase === 'updating';
+  const isSyncError = dataSync?.phase === 'error';
 
   const handleCopy = (e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -100,14 +107,28 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
             <div>
               <h3 className="text-[10px] font-black text-[#0062ff] uppercase tracking-[0.3em] mb-1.5">{t('wallet.total_net_worth')}</h3>
               <div className="text-4xl md:text-5xl font-black text-slate-900 tracking-tighter flex items-baseline flex-wrap italic">
-                <CountUp value={balance} decimals={4} className="tabular-nums" />
+                {balanceKnown ? (
+                  <CountUp value={balance} decimals={4} className="tabular-nums" />
+                ) : (
+                  <span className="inline-flex items-end">
+                    <span className="inline-block w-40 md:w-48 h-10 md:h-12 bg-slate-200/70 rounded-xl animate-pulse" aria-label="balance-loading" />
+                  </span>
+                )}
                 <span className="text-lg md:text-2xl font-bold text-slate-300 ml-2 not-italic">{activeChain.currencySymbol}</span>
               </div>
             </div>
             <div className="flex gap-2">
-              <button aria-label="refresh-balance" onClick={onRefresh} className="p-2.5 bg-slate-50 hover:bg-slate-100 text-slate-400 rounded-xl transition-all border border-slate-100">
+              <div className="flex flex-col items-end gap-1">
+                <button aria-label="refresh-balance" onClick={onRefresh} className="p-2.5 bg-slate-50 hover:bg-slate-100 text-slate-400 rounded-xl transition-all border border-slate-100">
                 <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin text-[#0062ff]' : ''}`} />
-              </button>
+                </button>
+                {isUpdating && (
+                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-300">{t('wallet.sync_updating')}</span>
+                )}
+                {isSyncError && (
+                  <span className="text-[9px] font-black uppercase tracking-widest text-red-500">{t('wallet.sync_failed_tap_refresh')}</span>
+                )}
+              </div>
             </div>
           </div>
           
@@ -192,7 +213,11 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
               </div>
               <div className="text-right ml-3">
                 <div className="font-mono font-bold text-lg text-slate-900 group-hover:text-[#0062ff] transition-colors">
-                  <CountUp value={getTokenBalance(t_item)} decimals={4} className="tabular-nums" />
+                  {tokensKnown ? (
+                    <CountUp value={getTokenBalance(t_item)} decimals={4} className="tabular-nums" />
+                  ) : (
+                    <span className="inline-block w-24 h-6 bg-slate-200/70 rounded-lg animate-pulse" aria-label="token-balance-loading" />
+                  )}
                 </div>
               </div>
             </div>
@@ -224,7 +249,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
                     </div>
                   </div>
                   {tx.hash && (
-                    <a href={getTxExplorerHref(tx)} target="_blank" rel="noreferrer" className="p-2 text-slate-300 hover:text-[#0062ff]"><ExternalLink className="w-4 h-4" /></a>
+                    <a href={getTxExplorerHref(tx)} target="_blank" rel="noopener noreferrer" className="p-2 text-slate-300 hover:text-[#0062ff]"><ExternalLink className="w-4 h-4" /></a>
                   )}
                 </div>
               )

@@ -159,15 +159,14 @@ describe('TronService', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('getBalance 在 HTTP 非 2xx 时会返回 0n（不中断 UI）', async () => {
+  it('getBalance 在 HTTP 非 2xx 时应抛错（由上层决定是否保留旧值或展示错误）', async () => {
     vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
       ok: false,
       status: 503,
       json: async () => ({})
     } as Response);
 
-    const result = await TronService.getBalance('https://nile.trongrid.io', HEX_TRON_ADDR);
-    expect(result).toBe(0n);
+    await expect(TronService.getBalance('https://nile.trongrid.io', HEX_TRON_ADDR)).rejects.toThrow(/HTTP 503/i);
   });
 
   it('probeRpc 在超时场景下应返回 ok=false 且错误为 timeout', async () => {

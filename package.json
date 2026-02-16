@@ -1,14 +1,16 @@
 {
   "name": "cpcash-wallet-rpc",
   "private": true,
-  "version": "0.0.2",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "build:single": "SINGLEFILE=1 vite build && node scripts/build-singlefile.mjs",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "npm run test:unit && npm run test:ui",
+    "test:unit": "find tests/unit -name \"*.test.ts*\" | sort | while read -r f; do npx vitest run \"$f\" || exit 1; done",
+    "test:ui": "find tests/ui -name \"*.test.ts*\" | sort | while read -r f; do npx vitest run \"$f\" || exit 1; done",
     "test:watch": "vitest",
     "test:e2e:install": "PLAYWRIGHT_BROWSERS_PATH=.pw-browsers playwright install chromium",
     "test:e2e": "PLAYWRIGHT_BROWSERS_PATH=.pw-browsers playwright test",

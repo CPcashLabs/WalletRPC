@@ -40,6 +40,8 @@ export interface I18nSchema {
     token_updated: string;
     token_removed: string;
     data_sync_fault: string;
+    sync_updating: string;
+    sync_failed_tap_refresh: string;
     import_invalid: string;
   };
   tx: {

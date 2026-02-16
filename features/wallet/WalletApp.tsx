@@ -73,7 +73,7 @@ export const WalletApp: React.FC = () => {
   const {
     wallet, activeChain, activeAddress, activeChainTokens, activeAccountType, setActiveAccountType, activeSafeAddress, setActiveSafeAddress,
     activeChainId, chains, view, setView, isMenuOpen, setIsMenuOpen, isLoading, isIntroPreflightDone, error, errorObject, notification,
-    isChainModalOpen, setIsChainModalOpen, isAddTokenModalOpen, setIsAddTokenModalOpen, tokenToEdit, setTokenToEdit, balance, tokenBalances, transactions,
+    isChainModalOpen, setIsChainModalOpen, isAddTokenModalOpen, setIsAddTokenModalOpen, tokenToEdit, setTokenToEdit, balance, tokenBalances, sync, transactions,
     safeDetails, isDeployingSafe, trackedSafes, setTrackedSafes, privateKeyOrPhrase, setPrivateKeyOrPhrase, handleImport,
     handleSendSubmit, confirmAddToken, handleUpdateToken, handleRemoveToken, handleSaveChain,
     handleTrackSafe, handleSwitchNetwork, handleLogout, handleRefreshData, refreshSafeDetails, deploySafe, addOwnerTx, removeOwnerTx, changeThresholdTx, setError
@@ -200,8 +200,8 @@ export const WalletApp: React.FC = () => {
 
 	            <React.Suspense fallback={<div className="min-h-[320px] bg-white/70 rounded-2xl border border-slate-200" />}>
 	            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-	               {view === 'dashboard' && <><WalletDashboard balance={balance} activeChain={activeChain} chains={chains} address={activeAddress || ''} isLoading={isLoading} onRefresh={handleRefreshData} onSend={() => setView('send')} activeAccountType={activeAccountType} onViewSettings={() => setView('settings')} tokens={activeChainTokens} tokenBalances={tokenBalances} onAddToken={() => setIsAddTokenModalOpen(true)} onEditToken={setTokenToEdit} transactions={transactions} /><div className="mt-12 mb-6 text-center opacity-20"><p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.4em] italic">{t('wallet.disclaimer')}</p></div></>}
-	               {view === 'send' && <SendForm activeChain={activeChain} tokens={activeChainTokens} balances={{ ...tokenBalances, NATIVE: balance }} activeAccountType={activeAccountType} onSend={handleSendSubmit} onBack={() => setView('dashboard')} onRefresh={handleRefreshData} isLoading={isLoading} transactions={transactions} />}
+	               {view === 'dashboard' && <><WalletDashboard balance={balance} dataSync={sync} activeChain={activeChain} chains={chains} address={activeAddress || ''} isLoading={isLoading} onRefresh={handleRefreshData} onSend={() => setView('send')} activeAccountType={activeAccountType} onViewSettings={() => setView('settings')} tokens={activeChainTokens} tokenBalances={tokenBalances} onAddToken={() => setIsAddTokenModalOpen(true)} onEditToken={setTokenToEdit} transactions={transactions} /><div className="mt-12 mb-6 text-center opacity-20"><p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.4em] italic">{t('wallet.disclaimer')}</p></div></>}
+	               {view === 'send' && <SendForm activeChain={activeChain} tokens={activeChainTokens} balances={{ ...tokenBalances, NATIVE: balance }} dataSync={sync} activeAccountType={activeAccountType} onSend={handleSendSubmit} onBack={() => setView('dashboard')} onRefresh={handleRefreshData} isLoading={isLoading} transactions={transactions} />}
 	               {view === 'settings' && safeDetails && (
 	                 <SafeSettings
 	                   safeDetails={safeDetails}

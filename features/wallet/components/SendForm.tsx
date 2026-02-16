@@ -9,6 +9,7 @@ import { getExplorerLink } from '../utils';
 import { ethers } from 'ethers';
 import { useTranslation } from '../../../contexts/LanguageContext';
 import { TronService } from '../../../services/tronService';
+import { WalletDataSyncState } from '../hooks/useWalletData';
 
 export interface SendFormData {
   recipient: string;
@@ -22,6 +23,7 @@ interface SendFormProps {
   activeChain: ChainConfig;
   tokens: TokenConfig[];
   balances: Record<string, string>;
+  dataSync: WalletDataSyncState;
   activeAccountType: 'EOA' | 'SAFE';
   onSend: (data: SendFormData) => Promise<ProcessResult>;
   onBack: () => void;
@@ -34,6 +36,7 @@ export const SendForm: React.FC<SendFormProps> = ({
   activeChain,
   tokens,
   balances,
+  dataSync,
   activeAccountType,
   onSend,
   onBack,
@@ -56,10 +59,15 @@ export const SendForm: React.FC<SendFormProps> = ({
     return tokens.find(tk => tk.address.toLowerCase() === selectedAssetKey.toLowerCase()) || null;
   }, [tokens, selectedAssetKey]);
 
+  const nativeKnown = dataSync?.balanceKnown ?? true;
+  const tokensKnown = dataSync?.tokenBalancesKnown ?? true;
+  const currentBalanceKnown = currentToken ? tokensKnown : nativeKnown;
+
   const currentBalance = useMemo(() => {
+    if (!currentBalanceKnown) return null;
     if (!currentToken) return balances['NATIVE'] || '0';
     return balances[currentToken.address.toLowerCase()] ?? balances[currentToken.symbol] ?? '0';
-  }, [balances, currentToken]);
+  }, [balances, currentToken, currentBalanceKnown]);
 
   const transferDecimals = useMemo(() => {
     if (currentToken) return currentToken.decimals;
@@ -69,9 +77,10 @@ export const SendForm: React.FC<SendFormProps> = ({
   const isInsufficient = useMemo(() => {
     const trimmedAmount = amount.trim();
     if (!trimmedAmount) return false;
+    if (currentBalance == null) return false;
     try {
       const amountUnits = ethers.parseUnits(trimmedAmount, transferDecimals);
-      const balanceUnits = ethers.parseUnits(currentBalance || '0', transferDecimals);
+      const balanceUnits = ethers.parseUnits(currentBalance, transferDecimals);
       return amountUnits > balanceUnits;
     } catch {
       return false;
@@ -92,6 +101,7 @@ export const SendForm: React.FC<SendFormProps> = ({
   }, [amount, t, transferDecimals]);
 
   const availableDisplay = useMemo(() => {
+    if (currentBalance == null) return '—';
     const n = Number.parseFloat(currentBalance);
     return Number.isFinite(n) ? n.toFixed(4) : '0.0000';
   }, [currentBalance]);
@@ -189,7 +199,9 @@ export const SendForm: React.FC<SendFormProps> = ({
               <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">{t('settings.currency')}</label>
               <div className="flex items-center space-x-2">
                 <span className="text-[11px] font-bold text-slate-400 uppercase">
-                  {t('common.available')}: <span className="text-[#0062ff]">{availableDisplay}</span>
+                  {t('common.available')}: <span className={`${currentBalanceKnown ? 'text-[#0062ff]' : 'text-slate-300 italic'}`}>
+                    {currentBalanceKnown ? availableDisplay : (dataSync?.phase === 'error' ? t('wallet.sync_failed_tap_refresh') : t('wallet.sync_updating'))}
+                  </span>
                 </span>
                 <button 
                   onClick={() => onRefresh && onRefresh()} 
@@ -243,8 +255,9 @@ export const SendForm: React.FC<SendFormProps> = ({
               />
               <div className="absolute right-4 top-3.5">
                 <button 
-                  onClick={() => setAmount(currentBalance)}
-                  className="text-[10px] font-black text-[#0062ff] hover:text-[#0052d9] bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded transition-colors uppercase tracking-widest border border-blue-100"
+                  onClick={() => currentBalance != null && setAmount(currentBalance)}
+                  className={`text-[10px] font-black px-2 py-1 rounded transition-colors uppercase tracking-widest border ${currentBalanceKnown ? 'text-[#0062ff] hover:text-[#0052d9] bg-blue-50 hover:bg-blue-100 border-blue-100' : 'text-slate-300 bg-slate-50 border-slate-100 cursor-not-allowed'}`}
+                  disabled={!currentBalanceKnown}
                 >
                   {t('common.max')}
                 </button>
@@ -269,7 +282,7 @@ export const SendForm: React.FC<SendFormProps> = ({
               onClick={handleSend} 
               variant={hasAcknowledgedBalance ? 'danger' : (isInsufficient ? 'outline' : 'primary')}
               className={`w-full py-4 text-sm font-black transition-all ${(isInsufficient && !hasAcknowledgedBalance) ? 'border-amber-300 text-amber-600' : ''}`} 
-              disabled={!!recipientError || !!amountError || !recipient.trim() || !amount.trim()}
+              disabled={!currentBalanceKnown || !!recipientError || !!amountError || !recipient.trim() || !amount.trim()}
               icon={isInsufficient ? <AlertTriangle className="w-4 h-4" /> : (activeAccountType === 'SAFE' ? undefined : <Zap className="w-4 h-4" />)}
             >
               {isInsufficient 

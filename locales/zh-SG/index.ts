@@ -29,7 +29,7 @@ export const zhSG: I18nSchema = {
   },
   wallet: {
     title: "Wallet RPC",
-    intro: "高性能节点接入终端",
+    intro: "以隐私为默认的去中心化 RPC 钱包",
     connect_title: "初始化安全环境",
     connect_desc: "本地 AES-256 级别的主密钥解密。",
     disclaimer: "实验性构建版本。用户需承担一切操作风险。",
@@ -64,7 +64,9 @@ export const zhSG: I18nSchema = {
     token_import_failed: "代币导入失败。",
     token_updated: "代币已更新",
     token_removed: "代币已删除",
-    data_sync_fault: "数据同步故障"
+    data_sync_fault: "数据同步故障",
+    sync_updating: "更新中...",
+    sync_failed_tap_refresh: "更新失败，请点击刷新"
     ,
     import_invalid: "私钥/助记词无效"
   },

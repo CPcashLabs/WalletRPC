@@ -7,6 +7,14 @@ import { WalletDashboard } from '../../features/wallet/components/WalletDashboar
 import { ChainConfig, TokenConfig, TransactionRecord } from '../../features/wallet/types';
 
 const wrap = (ui: React.ReactElement) => render(<LanguageProvider>{ui}</LanguageProvider>);
+const syncOk = {
+  phase: 'idle' as const,
+  rpcUrl: 'https://rpc.bittorrentchain.io',
+  balanceKnown: true,
+  tokenBalancesKnown: true,
+  lastUpdatedAt: Date.now(),
+  error: null as string | null
+};
 
 const chain: ChainConfig = {
   id: 199,
@@ -52,6 +60,7 @@ describe('WalletDashboard UI', () => {
     wrap(
       <WalletDashboard
         balance="1.23"
+        dataSync={syncOk}
         activeChain={chain}
         chains={[chain]}
         address="0x000000000000000000000000000000000000dEaD"
@@ -81,6 +90,7 @@ describe('WalletDashboard UI', () => {
     wrap(
       <WalletDashboard
         balance="2"
+        dataSync={syncOk}
         activeChain={chain}
         chains={[chain]}
         address="0x000000000000000000000000000000000000dEaD"
@@ -111,6 +121,7 @@ describe('WalletDashboard UI', () => {
     wrap(
       <WalletDashboard
         balance="1"
+        dataSync={syncOk}
         activeChain={chain}
         chains={[chain]}
         address="0x000000000000000000000000000000000000dEaD"

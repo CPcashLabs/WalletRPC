@@ -7,6 +7,14 @@ import { LanguageProvider } from '../../contexts/LanguageContext';
 import { ChainConfig, TransactionRecord } from '../../features/wallet/types';
 
 const renderWithProvider = (ui: React.ReactElement) => render(<LanguageProvider>{ui}</LanguageProvider>);
+const syncOk = {
+  phase: 'idle' as const,
+  rpcUrl: 'https://rpc.local',
+  balanceKnown: true,
+  tokenBalancesKnown: true,
+  lastUpdatedAt: Date.now(),
+  error: null as string | null
+};
 
 const chain: ChainConfig = {
   id: 1,
@@ -39,6 +47,7 @@ describe('SendForm UI', () => {
         activeChain={chain}
         tokens={chain.tokens}
         balances={{ NATIVE: '1.00', [chain.tokens[0].address.toLowerCase()]: '10.00' }}
+        dataSync={syncOk}
         activeAccountType="EOA"
         onSend={vi.fn(async () => ({ success: true }))}
         onBack={vi.fn()}
@@ -57,6 +66,7 @@ describe('SendForm UI', () => {
         activeChain={chain}
         tokens={chain.tokens}
         balances={{ NATIVE: '1.00', [chain.tokens[0].address.toLowerCase()]: '10.00' }}
+        dataSync={syncOk}
         activeAccountType="EOA"
         onSend={vi.fn(async () => ({ success: true }))}
         onBack={vi.fn()}
@@ -79,6 +89,7 @@ describe('SendForm UI', () => {
         activeChain={chain}
         tokens={chain.tokens}
         balances={{ NATIVE: '1.00', [chain.tokens[0].address.toLowerCase()]: '10.00' }}
+        dataSync={syncOk}
         activeAccountType="EOA"
         onSend={onSend}
         onBack={vi.fn()}
@@ -112,6 +123,7 @@ describe('SendForm UI', () => {
           NATIVE: '1.00',
           [chain.tokens[0].address.toLowerCase()]: '9007199254740992.000000'
         }}
+        dataSync={syncOk}
         activeAccountType="EOA"
         onSend={vi.fn(async () => ({ success: true }))}
         onBack={vi.fn()}

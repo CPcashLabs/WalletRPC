@@ -63,7 +63,7 @@ export const TransferStateView: React.FC<TransferStateViewProps> = ({
           </div>
           <div className="pt-4 w-full max-w-[240px] mx-auto space-y-4">
              <Button onClick={onClose} className="w-full py-4 text-white shadow-lg">{t('tx.return_to_base')}</Button>
-             {txHash && explorerUrl && <a href={explorerUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center text-[10px] text-[#0062ff] hover:text-slate-900 font-black uppercase tracking-[0.3em] transition-colors">{t('tx.inspect_tx')} <ExternalLink className="w-3 h-3 ml-2" /></a>}
+             {txHash && explorerUrl && <a href={explorerUrl} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center text-[10px] text-[#0062ff] hover:text-slate-900 font-black uppercase tracking-[0.3em] transition-colors">{t('tx.inspect_tx')} <ExternalLink className="w-3 h-3 ml-2" /></a>}
           </div>
         </div>
       )}
@@ -83,7 +83,7 @@ export const TransferStateView: React.FC<TransferStateViewProps> = ({
           </div>
           <div className="pt-4 w-full max-w-[220px] mx-auto space-y-3">
              <Button onClick={onClose} variant="secondary" className="w-full py-3 bg-slate-50/50">{t('tx.background_run')}</Button>
-             {txHash && explorerUrl && <a href={explorerUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center text-[9px] text-slate-300 hover:text-[#0062ff] font-bold uppercase tracking-[0.2em] transition-colors">{t('tx.view_explorer')} <ExternalLink className="w-3 h-3 ml-2" /></a>}
+             {txHash && explorerUrl && <a href={explorerUrl} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center text-[9px] text-slate-300 hover:text-[#0062ff] font-bold uppercase tracking-[0.2em] transition-colors">{t('tx.view_explorer')} <ExternalLink className="w-3 h-3 ml-2" /></a>}
           </div>
         </div>
       )}

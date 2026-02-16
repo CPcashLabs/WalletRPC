@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom/vitest';
+import { afterEach, vi } from 'vitest';
 
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
@@ -12,4 +13,10 @@ Object.defineProperty(window, 'matchMedia', {
     removeEventListener: () => {},
     dispatchEvent: () => false
   })
+});
+
+// Keep test runtime deterministic: always reset mocked timers/mocks between tests.
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
 });

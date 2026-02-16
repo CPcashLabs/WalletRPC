@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { ethers } from 'ethers';
 import { TronService } from '../../../services/tronService';
 import { ERC20_ABI, SAFE_ABI } from '../config';
@@ -27,6 +27,15 @@ export type SafeMetaFields = {
   nonce?: boolean;
 };
 
+export type WalletDataSyncState = {
+  phase: 'idle' | 'updating' | 'error';
+  rpcUrl: string | null;
+  balanceKnown: boolean;
+  tokenBalancesKnown: boolean;
+  lastUpdatedAt: number | null;
+  error: string | null;
+};
+
 export const useWalletData = ({
   wallet,
   activeAddress,
@@ -44,6 +53,36 @@ export const useWalletData = ({
   const [safeDetails, setSafeDetails] = useState<SafeDetails | null>(null);
   const [isInitialFetchDone, setIsInitialFetchDone] = useState(false);
   const requestIdRef = useRef(0);
+  const [sync, setSync] = useState<WalletDataSyncState>({
+    phase: 'idle',
+    rpcUrl: null,
+    balanceKnown: false,
+    tokenBalancesKnown: false,
+    lastUpdatedAt: null,
+    error: null
+  });
+
+  type CacheEntry = {
+    balance: string;
+    tokenBalances: Record<string, string>;
+    safeDetails: SafeDetails | null;
+    updatedAt: number;
+  };
+  const cacheRef = useRef<Map<string, CacheEntry>>(new Map());
+  const lastAutoRefreshKeyRef = useRef<string | null>(null);
+  const walletSessionKey = wallet?.address ? wallet.address.toLowerCase() : null;
+
+  const normalizedRpcUrl = useMemo(() => {
+    if (!activeChain.defaultRpcUrl) return null;
+    return activeChain.chainType === 'TRON'
+      ? TronService.normalizeHost(activeChain.defaultRpcUrl)
+      : activeChain.defaultRpcUrl;
+  }, [activeChain.chainType, activeChain.defaultRpcUrl]);
+
+  const scopeKey = useMemo(() => {
+    if (!activeAddress) return null;
+    return `${activeChain.chainType}:${activeChain.id}:${normalizedRpcUrl || ''}:${activeAddress.toLowerCase()}`;
+  }, [activeAddress, activeChain.chainType, activeChain.id, normalizedRpcUrl]);
 
   /**
    * 【RPC 优化：合约身份缓存 (Contract Identity Cache)】
@@ -68,7 +107,7 @@ export const useWalletData = ({
 
   // 监听钱包注销
   useEffect(() => {
-    if (!wallet) {
+    if (!walletSessionKey) {
       requestIdRef.current++;
       setIsInitialFetchDone(false);
       verifiedContractRef.current = null;
@@ -76,10 +115,21 @@ export const useWalletData = ({
       lastSafeMetaFetchTimeRef.current = 0;
       safeMetaRequestIdRef.current = 0;
       safeMetaInFlightRef.current = false;
+      cacheRef.current.clear();
       setSafeDetails(null);
       setBalance('0.00');
+      setTokenBalances({});
+      setSync({
+        phase: 'idle',
+        rpcUrl: null,
+        balanceKnown: false,
+        tokenBalancesKnown: false,
+        lastUpdatedAt: null,
+        error: null
+      });
+      lastAutoRefreshKeyRef.current = null;
     }
-  }, [wallet]);
+  }, [walletSessionKey]);
 
   /**
    * 【关键修复：账户切换状态清理】
@@ -94,9 +144,49 @@ export const useWalletData = ({
     lastSafeMetaFetchTimeRef.current = 0;
     safeMetaInFlightRef.current = false;
     setSafeDetails(null); // 立即清理成员列表，防止多签合约间数据污染
-    setBalance('0.00');    // 重置余额显示
-    setTokenBalances({}); // 重置代币列表
+    // Do not force a "0" flash. Mark as unknown and let cache/refresh populate.
+    setSync((prev) => ({
+      ...prev,
+      phase: 'idle',
+      rpcUrl: normalizedRpcUrl,
+      balanceKnown: false,
+      tokenBalancesKnown: false,
+      lastUpdatedAt: null,
+      error: null
+    }));
+    setTokenBalances({});
   }, [activeAddress, activeChain.id]);
+
+  // Node (RPC URL) scope changes: restore cached values if present, otherwise show placeholders.
+  useEffect(() => {
+    if (!walletSessionKey || !activeAddress) return;
+    if (!scopeKey) return;
+
+    const cached = cacheRef.current.get(scopeKey);
+    if (cached) {
+      setBalance(cached.balance);
+      setTokenBalances(cached.tokenBalances);
+      setSafeDetails(cached.safeDetails);
+      setSync({
+        phase: 'updating',
+        rpcUrl: normalizedRpcUrl,
+        balanceKnown: true,
+        tokenBalancesKnown: true,
+        lastUpdatedAt: cached.updatedAt,
+        error: null
+      });
+    } else {
+      setSafeDetails(null);
+      setSync({
+        phase: 'updating',
+        rpcUrl: normalizedRpcUrl,
+        balanceKnown: false,
+        tokenBalancesKnown: false,
+        lastUpdatedAt: null,
+        error: null
+      });
+    }
+  }, [walletSessionKey, activeAddress, scopeKey, normalizedRpcUrl]);
 
   /**
    * 仅刷新 Safe 元数据（Owners/Threshold/Nonce）。
@@ -181,36 +271,57 @@ export const useWalletData = ({
    */
   const fetchData = async (force: boolean = false) => {
     if (!wallet || !activeAddress) return;
+    if (activeChain.chainType !== 'TRON' && !provider) return;
 
     const now = Date.now();
     if (!force && (now - lastFetchTime.current < FETCH_COOLDOWN)) return;
 
     const requestId = ++requestIdRef.current;
 
+    setSync((prev) => ({
+      ...prev,
+      phase: 'updating',
+      rpcUrl: normalizedRpcUrl,
+      error: null
+    }));
     setIsLoading(true);
     try {
       lastFetchTime.current = now; 
       const currentBalances: Record<string, string> = {};
+      const cached = scopeKey ? cacheRef.current.get(scopeKey) : null;
+      const fallbackTokens = cached?.tokenBalances || tokenBalances;
+      let nextBalance: string | null = null;
+      let nextSafeDetails: SafeDetails | null = safeDetails;
 
       if (activeChain.chainType === 'TRON') {
         const host = activeChain.defaultRpcUrl;
-        // 波场并行同步：一次性查询原生余额和代币余额
-        const [balSun, ...tokenResults] = await Promise.all([
-          TronService.getBalance(host, activeAddress),
-          ...activeChainTokens.map((t: TokenConfig) => TronService.getTRC20Balance(host, t.address, activeAddress))
-        ]);
+        if (!host) throw new Error('Missing TRON RPC base URL');
+
+        // Native TRX balance (failures must not appear as a real 0 balance).
+        const balSun = await TronService.getBalance(host, activeAddress);
         if (requestId !== requestIdRef.current) return;
-        
-        setBalance(ethers.formatUnits(balSun, 6)); 
-        activeChainTokens.forEach((t: TokenConfig, i: number) => {
-           const v = ethers.formatUnits(tokenResults[i], t.decimals);
-           currentBalances[t.address.toLowerCase()] = v;
-           if (!(t.symbol in currentBalances)) currentBalances[t.symbol] = v;
-        });
+        nextBalance = ethers.formatUnits(balSun, 6);
+
+        // TRC20 balances: best-effort per token; preserve last-known on transient errors.
+        await Promise.all(activeChainTokens.map(async (tok: TokenConfig) => {
+          try {
+            const v = await TronService.getTRC20Balance(host, tok.address, activeAddress);
+            const formatted = ethers.formatUnits(v, tok.decimals);
+            currentBalances[tok.address.toLowerCase()] = formatted;
+            if (!(tok.symbol in currentBalances)) currentBalances[tok.symbol] = formatted;
+          } catch {
+            const prevByAddr = fallbackTokens[tok.address.toLowerCase()];
+            const prevBySym = fallbackTokens[tok.symbol];
+            const fallback = prevByAddr ?? prevBySym ?? '0.00';
+            currentBalances[tok.address.toLowerCase()] = fallback;
+            if (!(tok.symbol in currentBalances)) currentBalances[tok.symbol] = prevBySym ?? fallback;
+          }
+        }));
+        if (requestId !== requestIdRef.current) return;
+
+        setBalance(nextBalance);
         setTokenBalances(currentBalances);
       } else {
-        if (!provider) return;
-        
         // --- EVM 并行同步池 ---
         // 意图：将所有必要的初始化查询压入单个 Batch。
         const baseTasks: Promise<any>[] = [provider.getBalance(activeAddress)];
@@ -222,7 +333,8 @@ export const useWalletData = ({
 
         const baseResults = await Promise.all(baseTasks);
         if (requestId !== requestIdRef.current) return;
-        setBalance(ethers.formatEther(baseResults[0]));
+        nextBalance = ethers.formatEther(baseResults[0]);
+        setBalance(nextBalance);
 
         if (activeAccountType === 'SAFE' && !isContractVerified) {
            const code = baseResults[1];
@@ -242,7 +354,8 @@ export const useWalletData = ({
           ]);
           if (requestId !== requestIdRef.current) return;
           // 确保写入的是当前 activeAddress 的数据
-          setSafeDetails({ owners, threshold: Number(threshold), nonce: Number(nonce) });
+          nextSafeDetails = { owners, threshold: Number(threshold), nonce: Number(nonce) };
+          setSafeDetails(nextSafeDetails);
         }
 
         // 批量获取 ERC20 余额
@@ -255,14 +368,33 @@ export const useWalletData = ({
             if (!(token.symbol in currentBalances)) currentBalances[token.symbol] = v;
           } catch (e) {
             // Keep last-known values on transient RPC errors to avoid false zero balances.
-            currentBalances[token.address.toLowerCase()] = tokenBalances[token.address.toLowerCase()] ?? '0.00';
-            if (!(token.symbol in currentBalances)) currentBalances[token.symbol] = tokenBalances[token.symbol] ?? '0.00';
+            currentBalances[token.address.toLowerCase()] = fallbackTokens[token.address.toLowerCase()] ?? '0.00';
+            if (!(token.symbol in currentBalances)) currentBalances[token.symbol] = fallbackTokens[token.symbol] ?? '0.00';
           }
         }));
         if (requestId !== requestIdRef.current) return;
 
         setTokenBalances(currentBalances);
       }
+
+      // Persist per-node cache only after a successful run.
+      if (scopeKey) {
+        cacheRef.current.set(scopeKey, {
+          balance: nextBalance ?? balance,
+          tokenBalances: currentBalances,
+          safeDetails: nextSafeDetails ?? null,
+          updatedAt: Date.now()
+        });
+      }
+
+      setSync({
+        phase: 'idle',
+        rpcUrl: normalizedRpcUrl,
+        balanceKnown: true,
+        tokenBalancesKnown: true,
+        lastUpdatedAt: Date.now(),
+        error: null
+      });
     } catch (e: unknown) {
       // 尽量把 RPC/网络错误具体化（仍保持可本地化）
       const normalized = handleTxError(e as any, t);
@@ -273,6 +405,15 @@ export const useWalletData = ({
           ? fallback
           : normalized || fallback;
       setError(msg);
+      const hasCached = !!(scopeKey && cacheRef.current.has(scopeKey));
+      setSync((prev) => ({
+        phase: 'error',
+        rpcUrl: normalizedRpcUrl,
+        balanceKnown: hasCached ? true : prev.balanceKnown && prev.rpcUrl === normalizedRpcUrl,
+        tokenBalancesKnown: hasCached ? true : prev.tokenBalancesKnown && prev.rpcUrl === normalizedRpcUrl,
+        lastUpdatedAt: prev.lastUpdatedAt,
+        error: msg
+      }));
     } finally {
       if (requestId === requestIdRef.current) {
         setIsLoading(false);
@@ -281,5 +422,17 @@ export const useWalletData = ({
     }
   };
 
-  return { balance, tokenBalances, safeDetails, isInitialFetchDone, fetchData, refreshSafeDetails };
+  // Node switch should force a refresh immediately (no cooldown) to populate cache and clear placeholders.
+  useEffect(() => {
+    if (!walletSessionKey || !activeAddress) return;
+    if (!normalizedRpcUrl) return;
+    if (activeChain.chainType !== 'TRON' && !provider) return;
+    const autoKey = `${walletSessionKey}:${scopeKey || ''}:${activeAccountType}`;
+    if (lastAutoRefreshKeyRef.current === autoKey) return;
+    lastAutoRefreshKeyRef.current = autoKey;
+    fetchData(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walletSessionKey, activeAddress, scopeKey, normalizedRpcUrl, activeAccountType, activeChain.chainType, !!provider]);
+
+  return { balance, tokenBalances, safeDetails, isInitialFetchDone, fetchData, refreshSafeDetails, sync };
 };
