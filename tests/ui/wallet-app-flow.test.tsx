@@ -285,4 +285,49 @@ describe('WalletApp flow', () => {
     unmount();
     window.history.pushState({}, '', oldPath);
   });
+
+  it('菜单展开时可切换到指定 SAFE 账户上下文', async () => {
+    const user = userEvent.setup();
+    const useEvmWallet = await getUseEvmWalletMock();
+    const state = makeBase();
+    state.isMenuOpen = true;
+    state.trackedSafes = [{ address: '0x000000000000000000000000000000000000c0de', name: 'Safe_c0de', chainId: 199 }];
+    useEvmWallet.mockReturnValue(state);
+
+    render(
+      <LanguageProvider>
+        <HttpConsoleProvider>
+          <WalletApp />
+        </HttpConsoleProvider>
+      </LanguageProvider>
+    );
+
+    await user.click(await screen.findByText('Safe_c0de'));
+
+    expect(state.setActiveAccountType).toHaveBeenCalledWith('SAFE');
+    expect(state.setActiveSafeAddress).toHaveBeenCalledWith('0x000000000000000000000000000000000000c0de');
+    expect(state.setIsMenuOpen).toHaveBeenCalledWith(false);
+    expect(state.setView).toHaveBeenCalledWith('dashboard');
+  });
+
+  it('TRON 链下即使 isMenuOpen=true 也不渲染账户菜单', async () => {
+    const useEvmWallet = await getUseEvmWalletMock();
+    const state = makeBase();
+    state.activeChain = { ...state.activeChain, chainType: 'TRON' };
+    state.view = 'tron_finance';
+    state.isMenuOpen = true;
+    state.trackedSafes = [{ address: '0x000000000000000000000000000000000000c0de', name: 'Safe_c0de', chainId: 199 }];
+    useEvmWallet.mockReturnValue(state);
+
+    render(
+      <LanguageProvider>
+        <HttpConsoleProvider>
+          <WalletApp />
+        </HttpConsoleProvider>
+      </LanguageProvider>
+    );
+
+    expect(screen.queryByText('Safe_c0de')).not.toBeInTheDocument();
+    expect(await screen.findByText('back-from-tron')).toBeInTheDocument();
+  });
 });
