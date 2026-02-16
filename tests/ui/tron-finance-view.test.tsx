@@ -98,4 +98,114 @@ describe('TronFinanceView UI', () => {
     expect(await within(voteStepDetails as HTMLElement).findByText(/txid:\s*0xccc/)).toBeInTheDocument();
     expect(await within(voteStepDetails as HTMLElement).findByText(/详情：Insufficient Tron Power/)).toBeInTheDocument();
   });
+
+  it('资源页提交质押与解质押会调用 manager 方法', async () => {
+    const manager = createManager();
+    const user = userEvent.setup();
+    wrap(<TronFinanceView activeChain={tronChain} onBack={vi.fn()} manager={manager} />);
+
+    const inputs = screen.getAllByRole('textbox');
+    await user.type(inputs[0], '1.5');
+    await user.click(screen.getByRole('button', { name: '提交质押' }));
+    expect(manager.stakeResource).toHaveBeenCalledWith(1500000n, 'ENERGY');
+
+    await user.type(inputs[1], '2');
+    await user.click(screen.getByRole('button', { name: '提交解质押' }));
+    expect(manager.unstakeResource).toHaveBeenCalledWith(2000000n, 'ENERGY');
+
+    await user.click(screen.getByRole('button', { name: '提取已解锁资产' }));
+    expect(manager.withdrawUnfreeze).toHaveBeenCalled();
+  });
+
+  it('投票页会按总票数平均分配并提交', async () => {
+    const manager = createManager();
+    const user = userEvent.setup();
+    wrap(<TronFinanceView activeChain={tronChain} onBack={vi.fn()} manager={manager} />);
+
+    await user.click(screen.getByRole('button', { name: '投票' }));
+    const voteInput = await screen.findByPlaceholderText('总票数（将平均分配）');
+    await user.clear(voteInput);
+    await user.type(voteInput, '5');
+
+    // 默认仅选中 witnessA，再勾选 witnessB，最终应 3/2 平均
+    const checkboxes = await screen.findAllByRole('checkbox');
+    await user.click(checkboxes[1]);
+    await user.click(screen.getByRole('button', { name: '提交投票' }));
+
+    expect(manager.voteWitnesses).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ address: manager.witnesses[0].address, votes: 3 }),
+        expect.objectContaining({ address: manager.witnesses[1].address, votes: 2 })
+      ])
+    );
+  });
+
+  it('奖励页在不可领取时禁用按钮，可领取时触发 claim', async () => {
+    const manager = createManager();
+    const user = userEvent.setup();
+    const first = wrap(<TronFinanceView activeChain={tronChain} onBack={vi.fn()} manager={manager} />);
+
+    await user.click(screen.getByRole('button', { name: '奖励' }));
+    const claimBtn = await screen.findByRole('button', { name: 'Claim Reward' });
+    expect(claimBtn).toBeDisabled();
+    first.unmount();
+
+    const manager2 = createManager();
+    manager2.reward = { claimableSun: 1000n, canClaim: true };
+    const second = wrap(<TronFinanceView activeChain={tronChain} onBack={vi.fn()} manager={manager2} />);
+    await user.click(screen.getByRole('button', { name: '奖励' }));
+    const claimBtn2 = await screen.findByRole('button', { name: 'Claim Reward' });
+    expect(claimBtn2).not.toBeDisabled();
+    await user.click(claimBtn2);
+    expect(manager2.claimReward).toHaveBeenCalled();
+    second.unmount();
+  });
+
+  it('当 witnesses 为空时展示提示，且投票按钮禁用', async () => {
+    const manager = createManager();
+    manager.witnesses = [];
+    const user = userEvent.setup();
+    wrap(<TronFinanceView activeChain={tronChain} onBack={vi.fn()} manager={manager} />);
+
+    await user.click(screen.getByRole('button', { name: '投票' }));
+    expect(await screen.findByText(/当前节点未返回可用 SR 列表/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '提交投票' })).toBeDisabled();
+  });
+
+  it('当可投票资源不足时展示风险提示并禁用提交', async () => {
+    const manager = createManager();
+    manager.resources = {
+      ...manager.resources!,
+      tronPowerLimit: 8,
+      tronPowerUsed: 8
+    };
+    const user = userEvent.setup();
+    wrap(<TronFinanceView activeChain={tronChain} onBack={vi.fn()} manager={manager} />);
+
+    await user.click(screen.getByRole('button', { name: '投票' }));
+    expect(await screen.findByText(/当前可投票资源不足/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '提交投票' })).toBeDisabled();
+  });
+
+  it('one-click 在无历史投票对象时禁用执行', async () => {
+    const manager = createManager();
+    manager.votes = [];
+    const user = userEvent.setup();
+    wrap(<TronFinanceView activeChain={tronChain} onBack={vi.fn()} manager={manager} />);
+
+    await user.click(screen.getByRole('button', { name: '闭环快捷' }));
+    expect(await screen.findByText(/当前无历史投票对象，无法自动再投票/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '执行闭环快捷' })).toBeDisabled();
+  });
+
+  it('存在 failedSnapshot 时展示 Resume 按钮并可触发重试', async () => {
+    const manager = createManager();
+    manager.failedSnapshot = { step: 'VOTE_WITNESS', payload: {} as any };
+    const user = userEvent.setup();
+    wrap(<TronFinanceView activeChain={tronChain} onBack={vi.fn()} manager={manager} />);
+
+    const btn = await screen.findByRole('button', { name: /Resume From Failed Step/ });
+    await user.click(btn);
+    expect(manager.retryFailedStep).toHaveBeenCalled();
+  });
 });

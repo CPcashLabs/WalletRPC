@@ -141,4 +141,203 @@ describe('WalletDashboard UI', () => {
     await user.click(screen.getByText(/Mock Token/i));
     expect(onEditToken).toHaveBeenCalledWith(baseTokens[1]);
   });
+
+  it('复制地址时在 clipboard 不可用场景回退到 prompt', async () => {
+    const user = userEvent.setup();
+    const promptSpy = vi.spyOn(window, 'prompt').mockImplementation(() => null);
+    const clipboardBackup = navigator.clipboard;
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: undefined
+    });
+
+    try {
+      wrap(
+        <WalletDashboard
+          balance="1"
+          dataSync={syncOk}
+          activeChain={chain}
+          chains={[chain]}
+          address="0x000000000000000000000000000000000000dEaD"
+          isLoading={false}
+          onRefresh={vi.fn()}
+          onSend={vi.fn()}
+          activeAccountType="EOA"
+          onViewSettings={vi.fn()}
+          tokens={baseTokens}
+          tokenBalances={{ [baseTokens[0].address.toLowerCase()]: '1.23', [baseTokens[1].address.toLowerCase()]: '2.50' }}
+          onAddToken={vi.fn()}
+          onEditToken={vi.fn()}
+          transactions={txs}
+        />
+      );
+      await user.click(screen.getByText('0x000000000000000000000000000000000000dEaD'));
+      expect(promptSpy).toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: clipboardBackup
+      });
+      promptSpy.mockRestore();
+    }
+  });
+
+  it('点击二维码按钮可打开并关闭地址二维码弹窗', async () => {
+    const user = userEvent.setup();
+    wrap(
+      <WalletDashboard
+        balance="1"
+        dataSync={syncOk}
+        activeChain={chain}
+        chains={[chain]}
+        address="0x000000000000000000000000000000000000dEaD"
+        isLoading={false}
+        onRefresh={vi.fn()}
+        onSend={vi.fn()}
+        activeAccountType="EOA"
+        onViewSettings={vi.fn()}
+        tokens={baseTokens}
+        tokenBalances={{ [baseTokens[0].address.toLowerCase()]: '1.23', [baseTokens[1].address.toLowerCase()]: '2.50' }}
+        onAddToken={vi.fn()}
+        onEditToken={vi.fn()}
+        transactions={txs}
+      />
+    );
+
+    await user.click(screen.getByRole('button', { name: 'show-address-qr' }));
+    expect(screen.getByRole('button', { name: 'close-qr' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'close-qr' }));
+    expect(screen.queryByRole('button', { name: 'close-qr' })).not.toBeInTheDocument();
+  });
+
+  it('TRON 链展示理财入口且隐藏导入 token 按钮', async () => {
+    const user = userEvent.setup();
+    const onOpenTronFinance = vi.fn();
+    const tronChain: ChainConfig = {
+      ...chain,
+      id: 728126428,
+      chainType: 'TRON',
+      currencySymbol: 'TRX'
+    };
+
+    wrap(
+      <WalletDashboard
+        balance="1"
+        dataSync={syncOk}
+        activeChain={tronChain}
+        chains={[tronChain]}
+        address="TMwFHYXLJaRUPeW6421aqXL4ZEzPRFGkGT"
+        isLoading={false}
+        onRefresh={vi.fn()}
+        onSend={vi.fn()}
+        activeAccountType="EOA"
+        onViewSettings={vi.fn()}
+        tokens={baseTokens}
+        tokenBalances={{ [baseTokens[0].address.toLowerCase()]: '1.23', [baseTokens[1].address.toLowerCase()]: '2.50' }}
+        onAddToken={vi.fn()}
+        onEditToken={vi.fn()}
+        transactions={txs}
+        onOpenTronFinance={onOpenTronFinance}
+      />
+    );
+
+    expect(screen.queryByText(/import token/i)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'TRON Finance' }));
+    expect(onOpenTronFinance).toHaveBeenCalledTimes(1);
+  });
+
+  it('无交易记录时展示空日志占位', () => {
+    wrap(
+      <WalletDashboard
+        balance="1"
+        dataSync={syncOk}
+        activeChain={chain}
+        chains={[chain]}
+        address="0x000000000000000000000000000000000000dEaD"
+        isLoading={false}
+        onRefresh={vi.fn()}
+        onSend={vi.fn()}
+        activeAccountType="EOA"
+        onViewSettings={vi.fn()}
+        tokens={baseTokens}
+        tokenBalances={{ [baseTokens[0].address.toLowerCase()]: '1.23', [baseTokens[1].address.toLowerCase()]: '2.50' }}
+        onAddToken={vi.fn()}
+        onEditToken={vi.fn()}
+        transactions={[]}
+      />
+    );
+
+    expect(screen.getByText(/No operations logged|暂无操作记录/i)).toBeInTheDocument();
+  });
+
+  it('数据未就绪时展示余额与代币占位，并显示同步状态文案', () => {
+    const syncing = {
+      ...syncOk,
+      phase: 'updating' as const,
+      balanceKnown: false,
+      tokenBalancesKnown: false
+    };
+
+    wrap(
+      <WalletDashboard
+        balance="0"
+        dataSync={syncing}
+        activeChain={chain}
+        chains={[chain]}
+        address="0x000000000000000000000000000000000000dEaD"
+        isLoading
+        onRefresh={vi.fn()}
+        onSend={vi.fn()}
+        activeAccountType="EOA"
+        onViewSettings={vi.fn()}
+        tokens={baseTokens}
+        tokenBalances={{}}
+        onAddToken={vi.fn()}
+        onEditToken={vi.fn()}
+        transactions={txs}
+      />
+    );
+
+    expect(screen.getByLabelText('balance-loading')).toBeInTheDocument();
+    expect(screen.getAllByLabelText('token-balance-loading').length).toBeGreaterThan(0);
+    expect(screen.getByText(/Updating|更新中/i)).toBeInTheDocument();
+  });
+
+  it('同步失败时展示错误提示，且无 hash 的交易不渲染外链', () => {
+    const dataSyncError = {
+      ...syncOk,
+      phase: 'error' as const
+    };
+    const txNoHash: TransactionRecord[] = [
+      {
+        id: '2',
+        timestamp: Date.now(),
+        status: 'failed',
+        summary: 'Failed tx',
+        chainId: 999
+      }
+    ];
+    wrap(
+      <WalletDashboard
+        balance="1"
+        dataSync={dataSyncError}
+        activeChain={chain}
+        chains={[chain]}
+        address="0x000000000000000000000000000000000000dEaD"
+        isLoading={false}
+        onRefresh={vi.fn()}
+        onSend={vi.fn()}
+        activeAccountType="EOA"
+        onViewSettings={vi.fn()}
+        tokens={baseTokens}
+        tokenBalances={{ [baseTokens[0].address.toLowerCase()]: '1.23', [baseTokens[1].address.toLowerCase()]: '2.50' }}
+        onAddToken={vi.fn()}
+        onEditToken={vi.fn()}
+        transactions={txNoHash}
+      />
+    );
+
+    expect(screen.getByText(/Update failed|刷新重试|刷新/i)).toBeInTheDocument();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+  });
 });
