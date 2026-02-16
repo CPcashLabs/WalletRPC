@@ -180,4 +180,14 @@ describe('useWalletState', () => {
 
     vi.useRealTimers();
   });
+
+  it('setError 在重渲染后应保持稳定引用（避免触发依赖抖动）', async () => {
+    const { result, rerender } = renderHook(() => useWalletState(1), { wrapper: LanguageProvider });
+    const firstRef = result.current.setError;
+
+    rerender();
+    const secondRef = result.current.setError;
+
+    expect(secondRef).toBe(firstRef);
+  });
 });

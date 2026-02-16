@@ -90,6 +90,64 @@ describe('TronService', () => {
     expect(failed).toEqual({ found: true, success: false });
   });
 
+  it('getTransactionInfo 在无 receipt 但有 blockNumber 时判定为成功（避免误超时）', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ blockNumber: 123456 })
+    } as Response);
+
+    const result = await TronService.getTransactionInfo('https://nile.trongrid.io', '0x4');
+    expect(result).toEqual({ found: true, success: true });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('getTransactionInfo 在 info 未给出结果时回退 gettransactionbyid 的 contractRet', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch' as any);
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 'pending-but-known' })
+    } as Response);
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ ret: [{ contractRet: 'SUCCESS' }] })
+    } as Response);
+
+    const result = await TronService.getTransactionInfo('https://nile.trongrid.io', '0x5');
+    expect(result).toEqual({ found: true, success: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'https://nile.trongrid.io/wallet/gettransactionbyid',
+      expect.objectContaining({ method: 'POST' })
+    );
+  });
+
+  it('getNodeWitnesses 命中 24 小时缓存时不重复请求', async () => {
+    vi.spyOn(TronService, 'isValidBase58Address').mockReturnValue(true);
+    const fetchMock = vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        witnesses: [
+          {
+            address: 'TPYmHEhy5n8TCEfYGqW2rPxsghSfzghPDn',
+            url: 'https://example.org'
+          }
+        ]
+      })
+    } as Response);
+
+    const first = await TronService.getNodeWitnesses('https://nile.trongrid.io');
+    const second = await TronService.getNodeWitnesses('https://nile.trongrid.io');
+
+    expect(first.length).toBeGreaterThan(0);
+    expect(second.length).toBeGreaterThan(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('sendTransaction 原生转账成功路径返回 txid', async () => {
     vi.spyOn(TronService, 'addressFromPrivateKey').mockReturnValue(HEX_TRON_ADDR);
     const fetchMock = vi.spyOn(globalThis, 'fetch' as any);

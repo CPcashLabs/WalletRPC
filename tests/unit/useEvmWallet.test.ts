@@ -41,6 +41,8 @@ interface SetupOverrides {
   trackedSafes?: Array<{ address: string; name: string; chainId: number }>;
   safeDetails?: any;
   activeSafeAddress?: string | null;
+  wallet?: { address: string } | null;
+  unstableFetchData?: boolean;
 }
 
 const setupMocks = (activeAccountType: 'EOA' | 'SAFE', overrides: SetupOverrides = {}) => {
@@ -54,7 +56,7 @@ const setupMocks = (activeAccountType: 'EOA' | 'SAFE', overrides: SetupOverrides
   };
 
   const stateMock = {
-    wallet: null,
+    wallet: overrides.wallet ?? null,
     tronPrivateKey: null,
     tronWalletAddress: null,
     activeAccountType,
@@ -112,7 +114,16 @@ const setupMocks = (activeAccountType: 'EOA' | 'SAFE', overrides: SetupOverrides
 
   vi.mocked(useWalletStorage).mockReturnValue(storageMock as any);
   vi.mocked(useWalletState).mockReturnValue(stateMock as any);
-  vi.mocked(useWalletData).mockReturnValue(dataMock as any);
+  if (overrides.unstableFetchData) {
+    const baseFetchData = dataMock.fetchData;
+    vi.mocked(useWalletData).mockImplementation(() => ({
+      ...dataMock,
+      // 每次 render 提供新函数引用，模拟依赖抖动场景
+      fetchData: (...args: unknown[]) => (baseFetchData as any)(...args)
+    }) as any);
+  } else {
+    vi.mocked(useWalletData).mockReturnValue(dataMock as any);
+  }
   vi.mocked(useTransactionManager).mockReturnValue(txMgrMock as any);
   vi.mocked(useSafeManager).mockReturnValue(safeMgrMock as any);
 
@@ -127,6 +138,20 @@ describe('useEvmWallet handleSwitchNetwork', () => {
     // useEvmWallet 不应在渲染/挂载阶段主动调用 txMgr.syncNonce
     expect(txMgrMock.syncNonce).not.toHaveBeenCalled();
     expect(stateMock.setError).not.toHaveBeenCalled();
+  });
+
+  it('同一 dashboard 事件上下文下不应因 fetchData 引用变化而循环请求', () => {
+    const { dataMock } = setupMocks('EOA', {
+      wallet: { address: '0x000000000000000000000000000000000000beef' },
+      unstableFetchData: true
+    });
+    const { rerender } = renderHook(() => useEvmWallet(), { wrapper: LanguageProvider });
+
+    rerender();
+    rerender();
+
+    expect(dataMock.fetchData).toHaveBeenCalledTimes(1);
+    expect(dataMock.fetchData).toHaveBeenCalledWith(false);
   });
 
   it('SAFE 模式切链时重置为 EOA 并清空 activeSafeAddress', () => {
