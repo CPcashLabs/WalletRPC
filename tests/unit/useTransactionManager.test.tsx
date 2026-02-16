@@ -93,6 +93,46 @@ describe('useTransactionManager', () => {
     vi.useRealTimers();
   });
 
+  it('轮询开启后若 pending 被清空，应在 tick 中提前返回', async () => {
+    vi.useFakeTimers();
+    const getTransactionReceipt = vi.fn();
+    const provider = { getTransactionReceipt } as any;
+
+    const { result } = renderHook(() =>
+      useTransactionManager({
+        wallet: null,
+        tronPrivateKey: null,
+        provider,
+        activeChain: evmChain,
+        activeChainId: 199,
+        activeAccountType: 'EOA',
+        fetchData: vi.fn(),
+        setError: vi.fn(),
+        handleSafeProposal: vi.fn()
+      })
+    , { wrapper: LanguageProvider });
+
+    act(() => {
+      result.current.addTransactionRecord({
+        id: 'tx-to-clear',
+        chainId: 199,
+        hash: '0x' + 'f'.repeat(64),
+        status: 'submitted',
+        timestamp: Date.now(),
+        summary: 'to-clear'
+      });
+      result.current.clearTransactions();
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+      await Promise.resolve();
+    });
+
+    expect(getTransactionReceipt).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
   it('pending 交易确认后合并触发一次刷新', async () => {
     vi.useFakeTimers();
     const getTransactionReceipt = vi.fn(async () => ({ status: 1 }));
@@ -1095,6 +1135,125 @@ describe('useTransactionManager', () => {
     const msg = String(setError.mock.calls.at(-1)?.[0] || '');
     expect(msg).toBeTruthy();
     expect(msg.includes(':')).toBe(false);
+  });
+
+  it('TRON 广播失败且未提供 error 字段时也应返回可读错误', async () => {
+    const tronChain = {
+      ...evmChain,
+      chainType: 'TRON' as const,
+      currencySymbol: 'TRX',
+      defaultRpcUrl: 'https://nile.trongrid.io'
+    };
+    const wallet = { address: 'TPYmHEhy5n8TCEfYGqW2rPxsghSfzghPDn' } as any;
+    const setError = vi.fn();
+    vi.spyOn(TronService, 'sendTransaction').mockResolvedValue({
+      success: false
+    } as any);
+
+    const { result } = renderHook(
+      () =>
+        useTransactionManager({
+          wallet,
+          tronPrivateKey: '0x' + '1'.repeat(64),
+          provider: null,
+          activeChain: tronChain,
+          activeChainId: tronChain.id,
+          activeAccountType: 'EOA',
+          fetchData: vi.fn(),
+          setError,
+          handleSafeProposal: vi.fn()
+        }),
+      { wrapper: LanguageProvider }
+    );
+
+    let out: any;
+    await act(async () => {
+      out = await result.current.handleSendSubmit({
+        recipient: wallet.address,
+        amount: '1',
+        asset: 'NATIVE'
+      });
+    });
+
+    expect(out.success).toBe(false);
+    expect(setError).toHaveBeenCalled();
+  });
+
+  it('EVM EOA 发送 ERC20 且 token 未预置时应使用 assetAddress/assetDecimals 回退', async () => {
+    const sendTransaction = vi.fn(async () => ({ hash: '0x' + '7'.repeat(64) }));
+    const provider = { getTransactionCount: vi.fn(async () => 2) } as any;
+    const wallet = {
+      address: '0x0000000000000000000000000000000000000001',
+      connect: vi.fn(() => ({ sendTransaction }))
+    } as any;
+    vi.spyOn(FeeService, 'getOptimizedFeeData').mockResolvedValue({} as any);
+    vi.spyOn(FeeService, 'buildOverrides').mockReturnValue({ gasLimit: 200000n } as any);
+
+    const { result } = renderHook(
+      () =>
+        useTransactionManager({
+          wallet,
+          tronPrivateKey: null,
+          provider,
+          activeChain: { ...evmChain, tokens: [] },
+          activeChainId: evmChain.id,
+          activeAccountType: 'EOA',
+          fetchData: vi.fn(),
+          setError: vi.fn(),
+          handleSafeProposal: vi.fn()
+        }),
+      { wrapper: LanguageProvider }
+    );
+
+    await act(async () => {
+      await result.current.handleSendSubmit({
+        recipient: '0x0000000000000000000000000000000000000002',
+        amount: '2',
+        asset: 'MISSING',
+        assetAddress: '0x00000000000000000000000000000000000000bb',
+        assetDecimals: 8
+      });
+    });
+
+    const sentArg = sendTransaction.mock.calls[0][0];
+    expect(String(sentArg.data)).toMatch(/^0xa9059cbb/i);
+    expect(sentArg.to.toLowerCase()).toBe('0x00000000000000000000000000000000000000bb');
+  });
+
+  it('EVM EOA 发送原生币 amount 为空字符串时应按 0 处理', async () => {
+    const sendTransaction = vi.fn(async () => ({ hash: '0x' + '6'.repeat(64) }));
+    const provider = { getTransactionCount: vi.fn(async () => 1) } as any;
+    const wallet = {
+      address: '0x0000000000000000000000000000000000000001',
+      connect: vi.fn(() => ({ sendTransaction }))
+    } as any;
+
+    const { result } = renderHook(
+      () =>
+        useTransactionManager({
+          wallet,
+          tronPrivateKey: null,
+          provider,
+          activeChain: evmChain,
+          activeChainId: evmChain.id,
+          activeAccountType: 'EOA',
+          fetchData: vi.fn(),
+          setError: vi.fn(),
+          handleSafeProposal: vi.fn()
+        }),
+      { wrapper: LanguageProvider }
+    );
+
+    await act(async () => {
+      await result.current.handleSendSubmit({
+        recipient: '0x0000000000000000000000000000000000000002',
+        amount: '',
+        asset: 'NATIVE'
+      });
+    });
+
+    expect(sendTransaction).toHaveBeenCalledTimes(1);
+    expect(sendTransaction.mock.calls[0][0].value).toBe(0n);
   });
 
   it('轮询达到更高尝试次数后应进入 30s 退避', async () => {

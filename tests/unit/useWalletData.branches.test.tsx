@@ -35,6 +35,66 @@ const evmChain: ChainConfig = {
 };
 
 describe('useWalletData branches', () => {
+  it('fetchData 在 wallet 缺失时直接返回（不进入 loading）', async () => {
+    const setError = vi.fn();
+    const setIsLoading = vi.fn();
+    const provider = {
+      getBalance: vi.fn(async () => 1_000_000_000_000_000_000n)
+    } as any;
+
+    const { result } = renderHook(
+      () =>
+        useWalletData({
+          wallet: null,
+          activeAddress: '0x000000000000000000000000000000000000beef',
+          activeChain: evmChain,
+          activeAccountType: 'EOA',
+          activeChainTokens: [],
+          provider,
+          setIsLoading,
+          setError
+        }),
+      { wrapper: LanguageProvider }
+    );
+
+    await act(async () => {
+      await result.current.fetchData(true);
+    });
+    expect(setIsLoading).not.toHaveBeenCalledWith(true);
+    expect(provider.getBalance).not.toHaveBeenCalled();
+    expect(setError).not.toHaveBeenCalled();
+  });
+
+  it('fetchData 在 activeAddress 缺失时直接返回', async () => {
+    const setError = vi.fn();
+    const setIsLoading = vi.fn();
+    const provider = {
+      getBalance: vi.fn(async () => 1_000_000_000_000_000_000n)
+    } as any;
+
+    const { result } = renderHook(
+      () =>
+        useWalletData({
+          wallet: { address: '0x000000000000000000000000000000000000beef' } as any,
+          activeAddress: null,
+          activeChain: evmChain,
+          activeAccountType: 'EOA',
+          activeChainTokens: [],
+          provider,
+          setIsLoading,
+          setError
+        }),
+      { wrapper: LanguageProvider }
+    );
+
+    await act(async () => {
+      await result.current.fetchData(true);
+    });
+    expect(setIsLoading).not.toHaveBeenCalledWith(true);
+    expect(provider.getBalance).not.toHaveBeenCalled();
+    expect(setError).not.toHaveBeenCalled();
+  });
+
   it('TRON token 查询失败时保留上一次已知余额，避免误置 0', async () => {
     const setError = vi.fn();
     const setIsLoading = vi.fn();
