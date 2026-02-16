@@ -10,6 +10,7 @@ const Harness: React.FC = () => {
   return (
     <div>
       <button onClick={() => c.open()}>open</button>
+      <button onClick={() => c.clear()}>clear</button>
     </div>
   );
 };
@@ -140,5 +141,57 @@ describe('HttpConsole dock', () => {
     expect(await screen.findByText(/Load page|加载页面/)).toBeTruthy();
     expect(await screen.findByText(/Fetch TRON account|查询 TRON 账户余额/)).toBeTruthy();
     expect(await screen.findByText(/CORS preflight|预检请求|HTTP request|HTTP 请求/)).toBeTruthy();
+  });
+
+  it('XHR 批量 RPC 也应拆分为多条请求并支持 clear()', async () => {
+    (globalThis as any).fetch = vi.fn(async () => ({
+      status: 200,
+      clone: () => ({ text: async () => '{}' }),
+      text: async () => '{}'
+    }));
+    const openSpy = vi.spyOn(XMLHttpRequest.prototype, 'open').mockImplementation(function (this: XMLHttpRequest) {
+      return undefined as any;
+    });
+    const sendSpy = vi.spyOn(XMLHttpRequest.prototype, 'send').mockImplementation(function (this: XMLHttpRequest) {
+      Object.defineProperty(this, 'status', { configurable: true, value: 200 });
+      Object.defineProperty(this, 'responseText', {
+        configurable: true,
+        value: JSON.stringify([
+          { jsonrpc: '2.0', id: 1, result: '0x1' },
+          { jsonrpc: '2.0', id: 2, result: { status: 'ok' } }
+        ])
+      });
+      this.dispatchEvent(new Event('loadend'));
+      return undefined as any;
+    });
+
+    const user = userEvent.setup();
+    render(
+      <LanguageProvider>
+        <HttpConsoleProvider>
+          <Harness />
+        </HttpConsoleProvider>
+      </LanguageProvider>
+    );
+    await user.click(screen.getByText('open'));
+
+    await act(async () => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', 'https://rpc.example');
+      xhr.send(
+        JSON.stringify([
+          { jsonrpc: '2.0', id: 1, method: 'eth_getBalance', params: ['0xabc', 'latest'] },
+          { jsonrpc: '2.0', id: 2, method: 'eth_getTransactionReceipt', params: ['0xdef'] }
+        ])
+      );
+    });
+
+    const rows = await screen.findAllByText(/Batch\(2\)|批请求\(2\)/);
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+    await user.click(screen.getByText('clear'));
+    expect(screen.queryAllByText(/Batch\(2\)|批请求\(2\)/)).toHaveLength(0);
+
+    openSpy.mockRestore();
+    sendSpy.mockRestore();
   });
 });
