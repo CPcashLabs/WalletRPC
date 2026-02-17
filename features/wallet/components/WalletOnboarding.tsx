@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { ShieldCheck, ArrowRight, Hexagon, Lock, Zap, Globe } from 'lucide-react';
+import { ShieldCheck, ArrowRight, Hexagon, Lock, Zap, Globe, Github, X } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
 import { useTranslation } from '../../../contexts/LanguageContext';
 import { BrandLogo } from '../../../components/ui/BrandLogo';
@@ -111,6 +111,24 @@ export const WalletOnboarding: React.FC<WalletOnboardingProps> = ({ input, setIn
           <div className="flex items-center justify-center space-x-6 text-[10px] text-slate-400 font-bold uppercase">
              <span className="flex items-center"><ShieldCheck className="w-3 h-3 mr-1 text-[#0062ff]" /> {t('wallet.badge_rpc_only')}</span>
              <span className="flex items-center"><Globe className="w-3 h-3 mr-1" /> {t('wallet.badge_zero_telemetry')}</span>
+          </div>
+          <div className="flex items-center justify-center space-x-3">
+            <a
+              href="https://github.com/CPcashLabs/WalletRPC"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center space-x-2 text-[10px] text-slate-400 font-bold uppercase hover:text-[#0062ff] transition-colors"
+            >
+              <Github className="w-3 h-3" /> Github
+            </a>
+            <a
+              href="https://x.com/CPcashDao"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center space-x-2 text-[10px] text-slate-400 font-bold uppercase hover:text-[#0062ff] transition-colors"
+            >
+              <X className="w-3 h-3" /> (Twitter)
+            </a>
           </div>
         </div>
       </div>
