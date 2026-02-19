@@ -27,3 +27,5 @@ playwright-report
 test-results
 coverage
 .pw-browsers
+
+coverage_*.txt
