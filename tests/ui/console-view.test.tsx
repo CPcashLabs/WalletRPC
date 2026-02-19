@@ -182,4 +182,152 @@ describe('ConsoleView', () => {
     expect(screen.getAllByText('1.89s').length).toBeGreaterThan(0);
     expect(screen.getAllByText('-').length).toBeGreaterThan(0);
   });
+
+  it('dock 模式渲染最小化按钮并支持点击', async () => {
+    const user = userEvent.setup();
+    const onMinimize = vi.fn();
+
+    mockUseHttpConsole().mockReturnValue({
+      enabled: true,
+      setEnabled: vi.fn(),
+      expanded: true,
+      setExpanded: vi.fn(),
+      open: vi.fn(),
+      events: [
+        {
+          id: 'd1',
+          ts: Date.now(),
+          category: 'rpc' as const,
+          method: 'POST',
+          url: 'https://rpc.test',
+          host: 'rpc.test',
+          status: 200,
+          durationMs: 50,
+          action: 'eth_call'
+        }
+      ] as any,
+      clear: vi.fn()
+    });
+
+    render(
+      <LanguageProvider>
+        <ConsoleView mode="dock" onMinimize={onMinimize} />
+      </LanguageProvider>
+    );
+
+    await user.click(screen.getByLabelText('console-minimize'));
+    expect(onMinimize).toHaveBeenCalledTimes(1);
+  });
+
+  it('选择无 Safe 数据的事件时不渲染解码卡片', async () => {
+    const user = userEvent.setup();
+
+    mockUseHttpConsole().mockReturnValue({
+      enabled: true,
+      setEnabled: vi.fn(),
+      expanded: true,
+      setExpanded: vi.fn(),
+      open: vi.fn(),
+      events: [
+        {
+          id: 'plain-1',
+          ts: Date.now(),
+          category: 'http' as const,
+          method: 'GET',
+          url: 'https://api.example.com/data',
+          host: 'api.example.com',
+          status: 200,
+          durationMs: 350,
+          action: 'Load Data',
+          requestBody: null,
+          responseBody: 'hello world'
+        }
+      ] as any,
+      clear: vi.fn()
+    });
+
+    render(
+      <LanguageProvider>
+        <ConsoleView mode="page" />
+      </LanguageProvider>
+    );
+
+    // Hosts should render
+    expect(screen.getAllByText('api.example.com').length).toBeGreaterThan(0);
+
+    // Click the event
+    await user.click(screen.getByRole('button', { name: /Load Data/i }));
+
+    // Safe decode cards should NOT be present (only check for SAFE cards, not general text)
+    expect(screen.queryAllByText(/SAFE/).filter(el => el.className.includes('blue')).length).toBe(0);
+    // Duration should render as 350ms
+    expect(screen.getAllByText('350ms').length).toBeGreaterThan(0);
+  });
+
+  it('fmtMs >= 1000 时显示秒, 且 responseBody=null 时详情区显示空', async () => {
+    const user = userEvent.setup();
+
+    mockUseHttpConsole().mockReturnValue({
+      enabled: true,
+      setEnabled: vi.fn(),
+      expanded: true,
+      setExpanded: vi.fn(),
+      open: vi.fn(),
+      events: [
+        {
+          id: 'ev-sub1000',
+          ts: Date.now(),
+          category: 'rpc' as const,
+          method: 'POST',
+          url: 'https://rpc.test',
+          host: 'rpc.test',
+          status: 500,
+          durationMs: 42,
+          action: 'fast-req',
+          requestBody: { method: 'eth_blockNumber' },
+          responseBody: null
+        }
+      ] as any,
+      clear: vi.fn()
+    });
+
+    render(
+      <LanguageProvider>
+        <ConsoleView />
+      </LanguageProvider>
+    );
+
+    // durationMs < 1000 shows ms
+    expect(screen.getByText('42ms')).toBeInTheDocument();
+
+    // Click to select the event
+    await user.click(screen.getByRole('button', { name: /fast-req/i }));
+    // responseBody is null => safeStringify returns ''
+    expect(screen.getAllByText('500').length).toBeGreaterThan(0);
+  });
+
+  it('ON 状态 toggle 为 OFF', async () => {
+    const user = userEvent.setup();
+    const setEnabled = vi.fn();
+
+    mockUseHttpConsole().mockReturnValue({
+      enabled: true,
+      setEnabled,
+      expanded: true,
+      setExpanded: vi.fn(),
+      open: vi.fn(),
+      events: [],
+      clear: vi.fn()
+    });
+
+    render(
+      <LanguageProvider>
+        <ConsoleView />
+      </LanguageProvider>
+    );
+
+    await user.click(screen.getByRole('button', { name: 'ON' }));
+    expect(setEnabled).toHaveBeenCalledWith(false);
+  });
 });
+

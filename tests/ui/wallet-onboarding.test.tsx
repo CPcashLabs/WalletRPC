@@ -49,4 +49,32 @@ describe('WalletOnboarding UI', () => {
     await user.click(screen.getByRole('button', { name: '中文' }));
     expect(screen.getByRole('button', { name: '确认' })).toBeInTheDocument();
   });
+
+  it('error 不为空时显示错误提示', () => {
+    renderWithProvider(
+      <WalletOnboarding
+        input="test key"
+        setInput={vi.fn()}
+        onImport={vi.fn()}
+        error="Invalid private key"
+        isExiting={false}
+      />
+    );
+    expect(screen.getByText('Invalid private key')).toBeInTheDocument();
+  });
+
+  it('isExiting 为 true 时按钮禁用且显示 Booting 文案', () => {
+    renderWithProvider(
+      <WalletOnboarding
+        input="test key"
+        setInput={vi.fn()}
+        onImport={vi.fn()}
+        error={null}
+        isExiting={true}
+      />
+    );
+    const btn = screen.getByRole('button', { name: /Booting|启动中/i });
+    expect(btn).toBeDisabled();
+  });
 });
+

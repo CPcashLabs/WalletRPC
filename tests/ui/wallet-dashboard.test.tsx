@@ -340,4 +340,84 @@ describe('WalletDashboard UI', () => {
     expect(screen.getByText(/Update failed|刷新重试|刷新/i)).toBeInTheDocument();
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
+
+  it('clipboard 正常可用时 writeText 成功复制地址', async () => {
+    const user = userEvent.setup();
+    const writeTextMock = vi.fn().mockResolvedValue(undefined);
+    const clipboardBackup = navigator.clipboard;
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: writeTextMock }
+    });
+
+    try {
+      wrap(
+        <WalletDashboard
+          balance="1"
+          dataSync={syncOk}
+          activeChain={chain}
+          chains={[chain]}
+          address="0x000000000000000000000000000000000000dEaD"
+          isLoading={false}
+          onRefresh={vi.fn()}
+          onSend={vi.fn()}
+          activeAccountType="EOA"
+          onViewSettings={vi.fn()}
+          tokens={baseTokens}
+          tokenBalances={{}}
+          onAddToken={vi.fn()}
+          onEditToken={vi.fn()}
+          transactions={txs}
+        />
+      );
+      await user.click(screen.getByText('0x000000000000000000000000000000000000dEaD'));
+      expect(writeTextMock).toHaveBeenCalledWith('0x000000000000000000000000000000000000dEaD');
+    } finally {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: clipboardBackup
+      });
+    }
+  });
+
+  it('clipboard.writeText 同步抛出异常时回退到 prompt', async () => {
+    const user = userEvent.setup();
+    const promptSpy = vi.spyOn(window, 'prompt').mockImplementation(() => null);
+    const clipboardBackup = navigator.clipboard;
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockImplementation(() => { throw new Error('denied'); }) }
+    });
+
+    try {
+      wrap(
+        <WalletDashboard
+          balance="1"
+          dataSync={syncOk}
+          activeChain={chain}
+          chains={[chain]}
+          address="0x000000000000000000000000000000000000dEaD"
+          isLoading={false}
+          onRefresh={vi.fn()}
+          onSend={vi.fn()}
+          activeAccountType="EOA"
+          onViewSettings={vi.fn()}
+          tokens={baseTokens}
+          tokenBalances={{}}
+          onAddToken={vi.fn()}
+          onEditToken={vi.fn()}
+          transactions={txs}
+        />
+      );
+      await user.click(screen.getByText('0x000000000000000000000000000000000000dEaD'));
+      expect(promptSpy).toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: clipboardBackup
+      });
+      promptSpy.mockRestore();
+    }
+  });
 });
+
