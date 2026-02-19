@@ -31,7 +31,7 @@ describe('useTransactionManager', () => {
         setError: vi.fn(),
         handleSafeProposal: vi.fn()
       })
-    , { wrapper: LanguageProvider });
+      , { wrapper: LanguageProvider });
 
     act(() => {
       result.current.localNonceRef.current = 12;
@@ -71,7 +71,7 @@ describe('useTransactionManager', () => {
         setError: vi.fn(),
         handleSafeProposal: vi.fn()
       })
-    , { wrapper: LanguageProvider });
+      , { wrapper: LanguageProvider });
 
     act(() => {
       result.current.addTransactionRecord({
@@ -110,7 +110,7 @@ describe('useTransactionManager', () => {
         setError: vi.fn(),
         handleSafeProposal: vi.fn()
       })
-    , { wrapper: LanguageProvider });
+      , { wrapper: LanguageProvider });
 
     act(() => {
       result.current.addTransactionRecord({
@@ -137,7 +137,7 @@ describe('useTransactionManager', () => {
     vi.useFakeTimers();
     const getTransactionReceipt = vi.fn(async () => ({ status: 1 }));
     const provider = { getTransactionReceipt } as any;
-    const fetchData = vi.fn(async () => {});
+    const fetchData = vi.fn(async () => { });
 
     const { result } = renderHook(() =>
       useTransactionManager({
@@ -151,7 +151,7 @@ describe('useTransactionManager', () => {
         setError: vi.fn(),
         handleSafeProposal: vi.fn()
       })
-    , { wrapper: LanguageProvider });
+      , { wrapper: LanguageProvider });
 
     act(() => {
       result.current.addTransactionRecord({
@@ -206,7 +206,7 @@ describe('useTransactionManager', () => {
         setError: vi.fn(),
         handleSafeProposal: vi.fn()
       })
-    , { wrapper: LanguageProvider });
+      , { wrapper: LanguageProvider });
 
     act(() => {
       result.current.addTransactionRecord({
@@ -248,7 +248,7 @@ describe('useTransactionManager', () => {
         setError: vi.fn(),
         handleSafeProposal: vi.fn()
       })
-    , { wrapper: LanguageProvider });
+      , { wrapper: LanguageProvider });
 
     act(() => {
       result.current.addTransactionRecord({
@@ -1308,5 +1308,130 @@ describe('useTransactionManager', () => {
     });
     expect(getTransactionReceipt.mock.calls.length).toBe(calls + 1);
     vi.useRealTimers();
+  });
+
+  it('handleSendSubmit 支持不在 activeChain 列表中的自定义代币', async () => {
+    const provider = { getTransactionCount: vi.fn(async () => 0) } as any;
+    const sendTransaction = vi.fn(async () => ({ hash: '0x' + 'b'.repeat(64) }));
+    const wallet = {
+      address: '0x0000000000000000000000000000000000000001',
+      connect: vi.fn(() => ({ sendTransaction }))
+    } as any;
+
+    const { result } = renderHook(
+      () =>
+        useTransactionManager({
+          wallet,
+          tronPrivateKey: null,
+          provider,
+          activeChain: evmChain,
+          activeChainId: 199,
+          activeAccountType: 'EOA',
+          fetchData: vi.fn(),
+          setError: vi.fn(),
+          handleSafeProposal: vi.fn()
+        }),
+      { wrapper: LanguageProvider }
+    );
+
+    let out: any;
+    // 使用不在 evmChain.tokens 中的地址
+    const customTokenAddress = '0x1234567890123456789012345678901234567890';
+    await act(async () => {
+      out = await result.current.handleSendSubmit({
+        recipient: '0x0000000000000000000000000000000000000002',
+        amount: '10',
+        asset: 'CUSTOM', // symbol
+        assetAddress: customTokenAddress,
+        assetDecimals: 18
+      });
+    });
+
+    expect(out.success).toBe(true);
+    // 验证调用参数中的 to 地址是否为 customTokenAddress
+    const callArgs = sendTransaction.mock.calls[0][0];
+    expect(callArgs.to.toLowerCase()).toBe(customTokenAddress.toLowerCase());
+  });
+
+  it('toUserError: TRON 广播错误信息过长时应截断显示', async () => {
+    const tronChain = { ...evmChain, chainType: 'TRON' as const, currencySymbol: 'TRX', defaultRpcUrl: 'https://nile.trongrid.io' };
+    const wallet = { address: 'TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE' } as any;
+    const setError = vi.fn();
+
+    const longError = 'E'.repeat(150);
+    vi.spyOn(TronService, 'sendTransaction').mockResolvedValue({
+      success: false,
+      error: longError
+    });
+
+    const { result } = renderHook(
+      () =>
+        useTransactionManager({
+          wallet,
+          tronPrivateKey: '0x' + '1'.repeat(64),
+          provider: null,
+          activeChain: tronChain,
+          activeChainId: tronChain.id,
+          activeAccountType: 'EOA',
+          fetchData: vi.fn(),
+          setError,
+          handleSafeProposal: vi.fn()
+        }),
+      { wrapper: LanguageProvider }
+    );
+
+    await act(async () => {
+      await result.current.handleSendSubmit({
+        recipient: 'TPYmHEhy5n8TCEfYGqW2rPxsghSfzghPDn',
+        amount: '1',
+        asset: 'NATIVE'
+      });
+    });
+
+    expect(setError).toHaveBeenCalledTimes(1);
+    const errorMsg = setError.mock.calls[0][0];
+    expect(errorMsg.length).toBeLessThan(150 + 50);
+    expect(errorMsg).toContain('...');
+  });
+
+  it('handleSendSubmit: 遇到 replacement transaction underpriced 错误时也会重置 nonce', async () => {
+    const provider = { getTransactionCount: vi.fn(async () => 5) } as any;
+    const sendTransaction = vi.fn().mockRejectedValue(new Error('replacement transaction underpriced'));
+    const wallet = {
+      address: '0x0000000000000000000000000000000000000001',
+      connect: vi.fn(() => ({ sendTransaction }))
+    } as any;
+    const setError = vi.fn();
+
+    const { result } = renderHook(
+      () =>
+        useTransactionManager({
+          wallet,
+          tronPrivateKey: null,
+          provider,
+          activeChain: evmChain,
+          activeChainId: 199,
+          activeAccountType: 'EOA',
+          fetchData: vi.fn(),
+          setError,
+          handleSafeProposal: vi.fn()
+        }),
+      { wrapper: LanguageProvider }
+    );
+
+    act(() => {
+      result.current.localNonceRef.current = 10;
+    });
+
+    await act(async () => {
+      await result.current.handleSendSubmit({
+        recipient: '0x0000000000000000000000000000000000000002',
+        amount: '1',
+        asset: 'NATIVE'
+      });
+    });
+
+    expect(result.current.localNonceRef.current).toBeNull();
+    expect(setError).toHaveBeenCalled();
   });
 });

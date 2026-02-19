@@ -66,4 +66,23 @@ describe('FeeService', () => {
     expect(overrides.maxFeePerGas).toBeUndefined();
     expect(overrides.maxPriorityFeePerGas).toBeUndefined();
   });
+
+  it('buildOverrides 在所有 fee 字段均为 null 时返回空 overrides', () => {
+    const feeData = new ethers.FeeData(null, null, null);
+    const overrides = FeeService.buildOverrides(feeData);
+
+    expect(overrides.gasPrice).toBeUndefined();
+    expect(overrides.maxFeePerGas).toBeUndefined();
+    expect(overrides.maxPriorityFeePerGas).toBeUndefined();
+    expect(overrides.gasLimit).toBeUndefined();
+  });
+
+  it('buildOverrides 在 gasLimit 为 null 时不设 gasLimit', () => {
+    const feeData = new ethers.FeeData(10n, 200n, 50n);
+    const overrides = FeeService.buildOverrides(feeData, null);
+
+    expect(overrides.gasLimit).toBeUndefined();
+    expect(overrides.maxFeePerGas).toBe(300n);
+  });
 });
+

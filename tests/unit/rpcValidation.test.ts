@@ -69,9 +69,26 @@ describe('rpcValidation', () => {
     vi.spyOn(globalThis, 'fetch' as any).mockRejectedValue(new Error('network down'));
     const result = await validateEvmRpcEndpoint('https://rpc.local', 1);
     expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.code).toBe('rpc_validation_failed');
-      expect(result.detail).toMatch(/network down/);
-    }
+    expect(result).toHaveProperty('code', 'rpc_validation_failed');
+    expect(result).toHaveProperty('detail', expect.stringMatching(/network down/));
+  });
+
+  it('validateEvmRpcEndpoint 匹配 chainId 时返回 ok', async () => {
+    vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ jsonrpc: '2.0', id: 1, result: '0x1' })
+    } as Response);
+    const result = await validateEvmRpcEndpoint('https://rpc.local', 1);
+    expect(result.ok).toBe(true);
+  });
+
+  it('validateEvmRpcEndpoint 在非 Error 异常时使用 String() 转换', async () => {
+    vi.spyOn(globalThis, 'fetch' as any).mockRejectedValue('string-error');
+    const result = await validateEvmRpcEndpoint('https://rpc.local', 1);
+    expect(result.ok).toBe(false);
+    expect(result).toHaveProperty('code', 'rpc_validation_failed');
+    expect(result).toHaveProperty('detail', 'string-error');
   });
 });
+
