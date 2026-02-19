@@ -60,7 +60,7 @@ const buildHook = (overrides?: Partial<Parameters<typeof useTronFinanceManager>[
   const setError = vi.fn();
   const setNotification = vi.fn();
   const addTransactionRecord = vi.fn();
-  const refreshWalletData = vi.fn(async () => {});
+  const refreshWalletData = vi.fn(async () => { });
 
   const hook = renderHook(() =>
     useTronFinanceManager({
@@ -210,7 +210,7 @@ describe('useTronFinanceManager', () => {
 
   it('signing 中触发其他动作会被并发保护拦截', async () => {
     const deferred = (() => {
-      let resolve: (value: { success: boolean; txid: string }) => void = () => {};
+      let resolve: (value: { success: boolean; txid: string }) => void = () => { };
       const promise = new Promise<{ success: boolean; txid: string }>((r) => {
         resolve = r;
       });
@@ -355,7 +355,7 @@ describe('useTronFinanceManager', () => {
 
   it('refreshFinanceData 并发触发时第二次调用应被锁跳过', async () => {
     const deferred = (() => {
-      let resolve: (v: any) => void = () => {};
+      let resolve: (v: any) => void = () => { };
       const promise = new Promise((r) => {
         resolve = r;
       });
@@ -415,7 +415,7 @@ describe('useTronFinanceManager', () => {
 
   it('submitted 同步骤动作应被阻塞，避免重复提交', async () => {
     const infoDeferred = (() => {
-      let resolve: (v: { found: boolean; success: boolean }) => void = () => {};
+      let resolve: (v: { found: boolean; success: boolean }) => void = () => { };
       const promise = new Promise<{ found: boolean; success: boolean }>((r) => {
         resolve = r;
       });
@@ -652,7 +652,7 @@ describe('useTronFinanceManager', () => {
 
   it('unstakeResource/withdrawUnfreeze 在 in-flight 时应被 guardActionInFlight 拦截', async () => {
     const deferred = (() => {
-      let resolve: (value: { success: boolean; txid: string }) => void = () => {};
+      let resolve: (value: { success: boolean; txid: string }) => void = () => { };
       const promise = new Promise<{ success: boolean; txid: string }>((r) => {
         resolve = r;
       });
@@ -736,4 +736,135 @@ describe('useTronFinanceManager', () => {
     expect(TronService.stakeResource).toHaveBeenCalledTimes(2);
   });
 
+  it('unstakeResource 成功后进入 confirmed 并记录交易', async () => {
+    const { result, addTransactionRecord } = buildHook();
+    await waitFor(() => { expect(result.current.resources).not.toBeNull(); });
+
+    let ok = false;
+    await act(async () => {
+      ok = await result.current.unstakeResource(1_000_000n, 'BANDWIDTH');
+    });
+    expect(ok).toBe(true);
+    expect(result.current.action.phase).toBe('confirmed');
+    expect(addTransactionRecord).toHaveBeenCalled();
+  });
+
+  it('withdrawUnfreeze 成功后进入 confirmed 并记录交易', async () => {
+    const { result, addTransactionRecord } = buildHook();
+    await waitFor(() => { expect(result.current.resources).not.toBeNull(); });
+
+    let ok = false;
+    await act(async () => {
+      ok = await result.current.withdrawUnfreeze();
+    });
+    expect(ok).toBe(true);
+    expect(result.current.action.phase).toBe('confirmed');
+    expect(addTransactionRecord).toHaveBeenCalled();
+  });
+
+  it('runOneClick 在 stakeAmountSun <= 0 时直接返回失败', async () => {
+    const { result, setError } = buildHook();
+    await waitFor(() => { expect(result.current.resources).not.toBeNull(); });
+
+    let ok = true;
+    await act(async () => {
+      ok = await result.current.runOneClick({
+        resource: 'ENERGY',
+        stakeAmountSun: 0n,
+        votes: []
+      });
+    });
+    expect(ok).toBe(false);
+    expect(setError).toHaveBeenCalledWith('Stake amount must be greater than 0');
+  });
+
+  it('runOneClick 在有可领奖励时执行完整闭环（claim→stake→vote）', async () => {
+    vi.mocked(TronService.getRewardInfo).mockResolvedValue({ claimableSun: 5_000_000n, canClaim: true });
+    const { result, setNotification } = buildHook();
+    await waitFor(() => { expect(result.current.resources).not.toBeNull(); });
+
+    let ok = false;
+    await act(async () => {
+      ok = await result.current.runOneClick({
+        resource: 'ENERGY',
+        stakeAmountSun: 1_000_000n,
+        votes: []
+      });
+    });
+    expect(ok).toBe(true);
+    expect(TronService.claimReward).toHaveBeenCalled();
+    expect(TronService.stakeResource).toHaveBeenCalled();
+    expect(TronService.voteWitnesses).toHaveBeenCalled();
+    expect(setNotification).toHaveBeenCalledWith('TRON finance one-click flow completed');
+  });
+
+  it('retryFailedStep 在 VOTE_WITNESS 快照下可重试', async () => {
+    vi.mocked(TronService.voteWitnesses)
+      .mockResolvedValueOnce({ success: false, error: 'vote-fail' })
+      .mockResolvedValueOnce({ success: true, txid: 'tx-vote-retry' });
+
+    const { result } = buildHook();
+    await waitFor(() => { expect(result.current.resources).not.toBeNull(); });
+
+    await act(async () => {
+      await result.current.voteWitnesses([{ address: witnessA.address, votes: 2 }]);
+    });
+    expect(result.current.failedSnapshot?.step).toBe('VOTE_WITNESS');
+
+    await act(async () => {
+      await result.current.retryFailedStep();
+    });
+    expect(TronService.voteWitnesses).toHaveBeenCalledTimes(2);
+  });
+
+  it('guardActionInFlight 在 submitted 且同一 step 时阻塞', async () => {
+    const deferred = (() => {
+      let resolve: (v: any) => void = () => { };
+      const p = new Promise((r) => { resolve = r; });
+      return { promise: p, resolve };
+    })();
+    vi.mocked(TronService.getTransactionInfo).mockImplementation(() => deferred.promise as any);
+    vi.mocked(TronService.stakeResource).mockResolvedValue({ success: true, txid: 'tx-stake-block' });
+    const { result, setError } = buildHook();
+    await waitFor(() => { expect(result.current.resources).not.toBeNull(); });
+
+    let stakePromise: Promise<boolean> | undefined;
+    await act(async () => {
+      stakePromise = result.current.stakeResource(1_000_000n, 'ENERGY');
+    });
+
+    // The first call is now in 'submitted' awaiting confirmation; attempt same step
+    let blocked = false;
+    await act(async () => {
+      blocked = !(await result.current.stakeResource(2_000_000n, 'ENERGY'));
+    });
+    expect(blocked).toBe(true);
+    expect(setError).toHaveBeenCalledWith('Same TRON action is still awaiting confirmation. Please wait.');
+
+    deferred.resolve({ found: true, success: true });
+    await act(async () => { await stakePromise; });
+  });
+
+  it('voteWitnesses 在地址不在 witness 列表中时报错', async () => {
+    const { result, setError } = buildHook();
+    await waitFor(() => { expect(result.current.resources).not.toBeNull(); });
+
+    let ok = true;
+    await act(async () => {
+      ok = await result.current.voteWitnesses([{ address: '0xINVALID', votes: 3 }]);
+    });
+    expect(ok).toBe(false);
+    expect(setError).toHaveBeenCalledWith('Selected SR does not exist on current node. Please refresh witness list.');
+  });
+
+  it('refreshFinanceData 在部分请求失败时设置错误', async () => {
+    vi.mocked(TronService.getAccountResources).mockRejectedValue(new Error('net error'));
+    const { result, setError } = buildHook();
+
+    await waitFor(() => {
+      expect(setError).toHaveBeenCalledWith('TRON finance data refresh failed, please retry.');
+    });
+  });
+
 });
+

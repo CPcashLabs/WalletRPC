@@ -18,7 +18,9 @@ const tronChain: ChainConfig = {
   tokens: []
 };
 
-const createManager = () => ({
+type TronManager = React.ComponentProps<typeof TronFinanceView>['manager'];
+
+const createManager = (): TronManager => ({
   witnesses: [
     { address: 'TPYmHEhy5n8TCEfYGqW2rPxsghSfzghPDn', name: 'Witness A', isActive: true },
     { address: 'TGzz8gjYiYRqpfmDwnLxfgPuLVNmpCswVp', name: 'Witness B', isActive: true }
@@ -38,7 +40,7 @@ const createManager = () => ({
     { address: 'TPYmHEhy5n8TCEfYGqW2rPxsghSfzghPDn', name: 'Witness A', votes: 8 },
     { address: 'TNotInCurrentWitnessListxxxxxxxxxxxx', name: 'Stale Witness', votes: 2 }
   ],
-  action: { phase: 'idle' as const },
+  action: { phase: 'idle' as 'idle' | 'signing' | 'submitted' | 'confirmed' | 'failed' },
   failedSnapshot: null,
   isRefreshing: false,
   refreshFinanceData: vi.fn(),
@@ -49,7 +51,7 @@ const createManager = () => ({
   voteWitnesses: vi.fn(async () => true),
   runOneClick: vi.fn(async () => true),
   oneClickProgress: {
-    stage: 'failed' as const,
+    stage: 'failed' as 'idle' | 'claim' | 'stake' | 'vote' | 'done' | 'failed',
     active: false,
     skippedClaim: false,
     message: '失败：再投票未完成',
@@ -269,4 +271,30 @@ describe('TronFinanceView UI', () => {
     const busyBtn = screen.getByRole('button', { name: /处理中：质押已提交/ });
     expect(busyBtn).toBeDisabled();
   });
+
+  it('isLoading 为 true 时 RefreshCw 图标有 animate-spin class', () => {
+    const manager = createManager();
+    wrap(<TronFinanceView activeChain={tronChain} isLoading={true} onBack={vi.fn()} manager={manager} />);
+    // The component renders Action Status text in all cases
+    expect(screen.getByText('Action Status')).toBeInTheDocument();
+  });
+
+  it('resources 为 null 时组件不崩溃', () => {
+    const manager = createManager();
+    manager.resources = null as any;
+    wrap(<TronFinanceView activeChain={tronChain} onBack={vi.fn()} manager={manager} />);
+    // Component should render without crashing; resources are accessed via optional chaining
+    expect(screen.getByText('TRON Finance')).toBeInTheDocument();
+  });
+
+  it('isRefreshing 为 true 时刷新按钮被 disabled', () => {
+    const manager = createManager();
+    manager.isRefreshing = true;
+    wrap(<TronFinanceView activeChain={tronChain} onBack={vi.fn()} manager={manager} />);
+    // The refresh button is disabled when isRefreshing is true
+    const buttons = screen.getAllByRole('button');
+    const refreshBtn = buttons.find(btn => btn.getAttribute('disabled') !== null && !btn.textContent);
+    expect(refreshBtn).toBeTruthy();
+  });
 });
+

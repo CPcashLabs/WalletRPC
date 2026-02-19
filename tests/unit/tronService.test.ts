@@ -312,7 +312,7 @@ describe('TronService', () => {
 
   it('probeRpc 在超时场景下应返回 ok=false 且错误为 timeout', async () => {
     vi.useFakeTimers();
-    const fetchMock = vi.spyOn(globalThis, 'fetch' as any).mockImplementation(() => new Promise(() => {}));
+    const fetchMock = vi.spyOn(globalThis, 'fetch' as any).mockImplementation(() => new Promise(() => { }));
 
     const p = TronService.probeRpc('https://nile.trongrid.io');
     await vi.advanceTimersByTimeAsync(9000);
@@ -360,7 +360,7 @@ describe('TronService', () => {
     ]);
     expect(out).toEqual({ success: true, txid: 'b'.repeat(64) });
 
-    const secondBody = JSON.parse(String(fetchMock.mock.calls[1][1]?.body ?? '{}'));
+    const secondBody = JSON.parse(String((fetchMock.mock.calls[1][1] as any)?.body ?? '{}'));
     expect(secondBody.visible).toBe(true);
   });
 
@@ -539,5 +539,190 @@ describe('TronService', () => {
 
   it('toHexAddress 输入 0x 地址时应直接透传', () => {
     expect(TronService.toHexAddress(HEX_TRON_ADDR)).toBe(HEX_TRON_ADDR);
+  });
+
+  it('sendTransaction TRC20 成功路径返回 txid', async () => {
+    vi.spyOn(TronService, 'addressFromPrivateKey').mockReturnValue(HEX_TRON_ADDR);
+    vi.spyOn(TronService, 'toHexAddress').mockReturnValue(HEX_TRON_ADDR);
+    const fetchMock = vi.spyOn(globalThis, 'fetch' as any);
+    // triggersmartcontract
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ result: { result: true }, transaction: { txID: 'e'.repeat(64), raw_data_hex: 'aabb', raw_data: {} } })
+    } as Response);
+    // broadcast
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ result: true })
+    } as Response);
+
+    const result = await TronService.sendTransaction(
+      'https://nile.trongrid.io',
+      TEST_PRIVATE_KEY,
+      HEX_TRON_ADDR,
+      1000n,
+      HEX_TRON_ADDR
+    );
+    expect(result.success).toBe(true);
+    expect(result.txid).toBe('e'.repeat(64));
+  });
+
+  it('probeRpc 在节点正常响应 block 时返回 ok=true', async () => {
+    vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ blockID: 'a'.repeat(64), block_header: { raw_data: { number: 123 } } })
+    } as Response);
+    const out = await TronService.probeRpc('https://nile.trongrid.io');
+    expect(out.ok).toBe(true);
+  });
+
+  it('getTransactionInfo 在 fetch 异常时返回 found=false', async () => {
+    vi.spyOn(globalThis, 'fetch' as any).mockRejectedValue(new Error('network error'));
+    const out = await TronService.getTransactionInfo('https://nile.trongrid.io', '0xbad');
+    expect(out).toEqual({ found: false });
+  });
+
+  it('normalizeHost 移除尾部斜杠和 /jsonrpc', () => {
+    expect(TronService.normalizeHost('https://api.trongrid.io/')).toBe('https://api.trongrid.io');
+    expect(TronService.normalizeHost('https://api.trongrid.io/jsonrpc')).toBe('https://api.trongrid.io');
+    expect(TronService.normalizeHost('')).toBe('');
+  });
+
+  it('addressFromPrivateKey 从私钥导出 Wallet 并拼装 hex 地址', () => {
+    // We test the function's internal logic: creates ethers.Wallet and prepends 0x41
+    const { ethers } = require('ethers');
+    const w = new ethers.Wallet(TEST_PRIVATE_KEY);
+    const expected = '0x41' + w.address.slice(2);
+    // Mock fromHexAddress to avoid Buffer/Uint8Array issue
+    const origFromHex = TronService.fromHexAddress;
+    TronService.fromHexAddress = vi.fn().mockReturnValue('TADDR');
+    try {
+      const addr = TronService.addressFromPrivateKey(TEST_PRIVATE_KEY);
+      expect(TronService.fromHexAddress).toHaveBeenCalledWith(expected);
+      expect(addr).toBe('TADDR');
+    } finally {
+      TronService.fromHexAddress = origFromHex;
+    }
+  });
+
+  it('getTransactionInfo 对 receipt.result=SUCCESS 返回 success=true', async () => {
+    vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 'txhash', receipt: { result: 'SUCCESS' } })
+    } as Response);
+    const out = await TronService.getTransactionInfo('https://nile.trongrid.io', 'txhash');
+    expect(out).toEqual({ found: true, success: true });
+  });
+
+  it('getTransactionInfo 对 receipt.result=REVERT 返回 success=false', async () => {
+    vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 'txhash', receipt: { result: 'REVERT' } })
+    } as Response);
+    const out = await TronService.getTransactionInfo('https://nile.trongrid.io', 'txhash');
+    expect(out).toEqual({ found: true, success: false });
+  });
+
+  it('getTransactionInfo 无 receipt.result 但有 blockNumber 时返回 found+success', async () => {
+    vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 'txhash', blockNumber: 100 })
+    } as Response);
+    const out = await TronService.getTransactionInfo('https://nile.trongrid.io', 'txhash');
+    expect(out).toEqual({ found: true, success: true });
+  });
+
+  it('getTransactionInfo 无 receipt 和 blockNumber 时回退 gettransactionbyid 查 contractRet', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch' as any);
+    // First call (gettransactioninfobyid) returns data without receipt/blockNumber
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 'txhash', someData: true })
+    } as Response);
+    // Second call (gettransactionbyid) returns contractRet
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ ret: [{ contractRet: 'SUCCESS' }] })
+    } as Response);
+    const out = await TronService.getTransactionInfo('https://nile.trongrid.io', 'txhash');
+    expect(out).toEqual({ found: true, success: true });
+  });
+
+  it('getTransactionInfo contractRet=REVERT 时返回 success=false', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch' as any);
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 'txhash', someData: true })
+    } as Response);
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ ret: [{ contractRet: 'OUT_OF_ENERGY' }] })
+    } as Response);
+    const out = await TronService.getTransactionInfo('https://nile.trongrid.io', 'txhash');
+    expect(out).toEqual({ found: true, success: false });
+  });
+
+  it('sendTransaction TRC20 trigger 失败时解析 result.message', async () => {
+    vi.spyOn(TronService, 'addressFromPrivateKey').mockReturnValue(HEX_TRON_ADDR);
+    vi.spyOn(TronService, 'toHexAddress').mockReturnValue(HEX_TRON_ADDR);
+    vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ result: { result: false, message: '4e6f7420656e6f756768' } })
+    } as Response);
+    const out = await TronService.sendTransaction(
+      'https://nile.trongrid.io',
+      TEST_PRIVATE_KEY,
+      HEX_TRON_ADDR,
+      1000n,
+      HEX_TRON_ADDR
+    );
+    expect(out.success).toBe(false);
+  });
+
+  it('sendTransaction 原生 TRX 金额超安全整数范围时应报错', async () => {
+    vi.spyOn(TronService, 'addressFromPrivateKey').mockReturnValue(HEX_TRON_ADDR);
+    const out = await TronService.sendTransaction(
+      'https://nile.trongrid.io',
+      TEST_PRIVATE_KEY,
+      HEX_TRON_ADDR,
+      BigInt(Number.MAX_SAFE_INTEGER) + 1n
+    );
+    expect(out.success).toBe(false);
+    expect(String(out.error)).toMatch(/safe integer/i);
+  });
+
+  it('voteWitnesses 过滤无效 votes（NaN、0、负数）后为空则直接失败', async () => {
+    vi.spyOn(TronService, 'addressFromPrivateKey').mockReturnValue(HEX_TRON_ADDR);
+    vi.spyOn(TronService, 'isValidBase58Address').mockReturnValue(true);
+    const out = await TronService.voteWitnesses('https://nile.trongrid.io', TEST_PRIVATE_KEY, [
+      { address: 'TPYmHEhy5n8TCEfYGqW2rPxsghSfzghPDn', votes: 0 },
+      { address: 'TPYmHEhy5n8TCEfYGqW2rPxsghSfzghPDn', votes: -1 },
+      { address: 'TPYmHEhy5n8TCEfYGqW2rPxsghSfzghPDn', votes: NaN }
+    ]);
+    expect(out.success).toBe(false);
+    expect(out.error).toMatch(/greater than 0/i);
+  });
+
+  it('getVoteStatus 在 fetch 失败时返回空数组', async () => {
+    vi.spyOn(globalThis, 'fetch' as any).mockRejectedValue(new Error('network'));
+    const out = await TronService.getVoteStatus('https://nile.trongrid.io', HEX_TRON_ADDR);
+    expect(out).toEqual([]);
+  });
+
+  it('getCanWithdrawUnfreeze 在 fetch 失败时返回 0n', async () => {
+    vi.spyOn(globalThis, 'fetch' as any).mockRejectedValue(new Error('net error'));
+    const out = await TronService.getCanWithdrawUnfreeze('https://nile.trongrid.io', HEX_TRON_ADDR);
+    expect(out).toBe(0n);
   });
 });
