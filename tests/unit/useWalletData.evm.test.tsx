@@ -185,4 +185,181 @@ describe('useWalletData (EVM branches)', () => {
       expect(setError).toHaveBeenCalled();
     });
   });
+
+  it('EOA 模式不会查询 Safe 元数据', async () => {
+    const provider = {
+      getBalance: vi.fn(async () => 5_000_000_000_000_000_000n),
+      getCode: vi.fn()
+    } as any;
+
+    mocked.contractCtor.mockImplementation(function () {
+      return { balanceOf: vi.fn(async () => 0n) };
+    });
+
+    const { result } = renderHook(
+      () =>
+        useWalletData({
+          wallet: { address: '0x000000000000000000000000000000000000beef' } as any,
+          activeAddress: '0x000000000000000000000000000000000000beef',
+          activeChain: evmChain,
+          activeAccountType: 'EOA',
+          activeChainTokens: [],
+          provider,
+          setIsLoading: vi.fn(),
+          setError: vi.fn()
+        }),
+      { wrapper: LanguageProvider }
+    );
+
+    await act(async () => {
+      await result.current.fetchData(true);
+    });
+
+    expect(provider.getCode).not.toHaveBeenCalled();
+    expect(result.current.safeDetails).toBeNull();
+    expect(result.current.balance).not.toBe('0.00');
+  });
+
+  it('SAFE getCode 返回 0x 时不应抓取 Safe 元数据', async () => {
+    const provider = {
+      getBalance: vi.fn(async () => 1_000_000_000_000_000n),
+      getCode: vi.fn(async () => '0x')
+    } as any;
+
+    mocked.contractCtor.mockImplementation(function () {
+      return { balanceOf: vi.fn(async () => 0n) };
+    });
+
+    const { result } = renderHook(
+      () =>
+        useWalletData({
+          wallet: { address: '0x000000000000000000000000000000000000beef' } as any,
+          activeAddress: '0x000000000000000000000000000000000000dead',
+          activeChain: evmChain,
+          activeAccountType: 'SAFE',
+          activeChainTokens: [],
+          provider,
+          setIsLoading: vi.fn(),
+          setError: vi.fn()
+        }),
+      { wrapper: LanguageProvider }
+    );
+
+    await act(async () => {
+      await result.current.fetchData(true);
+    });
+
+    expect(result.current.safeDetails).toBeNull();
+  });
+
+  it('fetchData 在 provider 或 wallet 缺失时直接返回', async () => {
+    const setIsLoading = vi.fn();
+    const { result } = renderHook(
+      () =>
+        useWalletData({
+          wallet: null,
+          activeAddress: null,
+          activeChain: evmChain,
+          activeAccountType: 'EOA',
+          activeChainTokens: [],
+          provider: null,
+          setIsLoading,
+          setError: vi.fn()
+        }),
+      { wrapper: LanguageProvider }
+    );
+
+    await act(async () => {
+      await result.current.fetchData(true);
+    });
+
+    expect(setIsLoading).not.toHaveBeenCalled();
+  });
+
+  it('fetchData 在 RPC 错误时设置错误消息并标记 sync 为 error', async () => {
+    const setError = vi.fn();
+    const provider = {
+      getBalance: vi.fn(async () => { throw new Error('rpc timeout'); })
+    } as any;
+
+    const { result } = renderHook(
+      () =>
+        useWalletData({
+          wallet: { address: '0x000000000000000000000000000000000000beef' } as any,
+          activeAddress: '0x000000000000000000000000000000000000beef',
+          activeChain: evmChain,
+          activeAccountType: 'EOA',
+          activeChainTokens: [],
+          provider,
+          setIsLoading: vi.fn(),
+          setError
+        }),
+      { wrapper: LanguageProvider }
+    );
+
+    await act(async () => {
+      await result.current.fetchData(true);
+    });
+
+    expect(setError).toHaveBeenCalled();
+    expect(result.current.sync.phase).toBe('error');
+  });
+
+  it('refreshSafeDetails 在非 SAFE 账户类型时直接返回', async () => {
+    const provider = {
+      getBalance: vi.fn(async () => 1n),
+      getCode: vi.fn()
+    } as any;
+
+    const { result } = renderHook(
+      () =>
+        useWalletData({
+          wallet: { address: '0x000000000000000000000000000000000000beef' } as any,
+          activeAddress: '0x000000000000000000000000000000000000beef',
+          activeChain: evmChain,
+          activeAccountType: 'EOA',
+          activeChainTokens: [],
+          provider,
+          setIsLoading: vi.fn(),
+          setError: vi.fn()
+        }),
+      { wrapper: LanguageProvider }
+    );
+
+    await act(async () => {
+      await result.current.refreshSafeDetails(true);
+    });
+
+    expect(provider.getCode).not.toHaveBeenCalled();
+  });
+
+  it('refreshSafeDetails 在 TRON 链时直接返回', async () => {
+    const tronChain: ChainConfig = {
+      ...evmChain,
+      chainType: 'TRON',
+      defaultRpcUrl: 'https://nile.trongrid.io'
+    };
+    const provider = { getCode: vi.fn() } as any;
+
+    const { result } = renderHook(
+      () =>
+        useWalletData({
+          wallet: { address: '0x000000000000000000000000000000000000beef' } as any,
+          activeAddress: '0x000000000000000000000000000000000000dead',
+          activeChain: tronChain,
+          activeAccountType: 'SAFE',
+          activeChainTokens: [],
+          provider,
+          setIsLoading: vi.fn(),
+          setError: vi.fn()
+        }),
+      { wrapper: LanguageProvider }
+    );
+
+    await act(async () => {
+      await result.current.refreshSafeDetails(true);
+    });
+
+    expect(provider.getCode).not.toHaveBeenCalled();
+  });
 });

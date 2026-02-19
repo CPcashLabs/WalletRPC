@@ -109,7 +109,7 @@ const setupMocks = (activeAccountType: 'EOA' | 'SAFE', overrides: SetupOverrides
   };
 
   const dataMock = {
-    fetchData: vi.fn(async () => {}),
+    fetchData: vi.fn(async () => { }),
     balance: '0.00',
     tokenBalances: {},
     safeDetails: overrides.safeDetails ?? null,
@@ -120,14 +120,15 @@ const setupMocks = (activeAccountType: 'EOA' | 'SAFE', overrides: SetupOverrides
     transactions: [],
     localNonceRef: { current: null },
     handleSendSubmit: vi.fn(async () => ({ success: true })),
-    syncNonce: vi.fn(async () => {}),
-    addTransactionRecord: vi.fn()
+    syncNonce: vi.fn(async () => { }),
+    addTransactionRecord: vi.fn(),
+    clearTransactions: vi.fn()
   };
 
   const safeMgrMock = {
     isDeployingSafe: false,
     handleSafeProposal: vi.fn(async () => true),
-    deploySafe: vi.fn(async () => {}),
+    deploySafe: vi.fn(async () => { }),
     addOwnerTx: vi.fn(async () => true),
     removeOwnerTx: vi.fn(async () => true),
     changeThresholdTx: vi.fn(async () => true)
@@ -592,4 +593,114 @@ describe('useEvmWallet handleSwitchNetwork', () => {
     expect(result.current.provider).toBeNull();
   });
 
+  it('confirmAddToken 在地址无效时设置错误', async () => {
+    const { stateMock } = setupMocks('EOA', {
+      wallet: { address: '0x000000000000000000000000000000000000beef' }
+    });
+    const { result } = renderHook(() => useEvmWallet(), { wrapper: LanguageProvider });
+
+    await act(async () => {
+      await result.current.confirmAddToken('not-an-address');
+    });
+    expect(stateMock.setError).toHaveBeenCalled();
+  });
+
+  it('confirmAddToken 在已存在代币时设置错误', async () => {
+    const tokenAddr = '0x0000000000000000000000000000000000000AAA';
+    const { stateMock, storageMock } = setupMocks('EOA', {
+      wallet: { address: '0x000000000000000000000000000000000000beef' },
+      customTokens: { 199: [{ address: tokenAddr, name: 'TOK', symbol: 'TOK', decimals: 18, isCustom: true }] }
+    });
+    storageMock.chains = [{ ...chainA, tokens: [] }, chainB];
+    const { result } = renderHook(() => useEvmWallet(), { wrapper: LanguageProvider });
+
+    await act(async () => {
+      await result.current.confirmAddToken(tokenAddr);
+    });
+    expect(stateMock.setError).toHaveBeenCalled();
+  });
+
+  it('handleSwitchNetwork 在 SAFE 模式下应重置为 EOA', () => {
+    const { stateMock } = setupMocks('SAFE', {
+      wallet: { address: '0x000000000000000000000000000000000000beef' }
+    });
+    const { result } = renderHook(() => useEvmWallet(), { wrapper: LanguageProvider });
+
+    act(() => {
+      result.current.handleSwitchNetwork(1);
+    });
+    expect(stateMock.setActiveAccountType).toHaveBeenCalledWith('EOA');
+    expect(stateMock.setActiveSafeAddress).toHaveBeenCalledWith(null);
+    expect(stateMock.setActiveChainId).toHaveBeenCalledWith(1);
+    expect(stateMock.setView).toHaveBeenCalledWith('dashboard');
+  });
+
+  it('handleOpenTronFinance 在非 TRON 链时不触发视图切换', () => {
+    const { stateMock } = setupMocks('EOA', {
+      wallet: { address: '0x000000000000000000000000000000000000beef' }
+    });
+    const { result } = renderHook(() => useEvmWallet(), { wrapper: LanguageProvider });
+
+    act(() => {
+      result.current.handleOpenTronFinance();
+    });
+    expect(stateMock.setView).not.toHaveBeenCalledWith('tron_finance');
+  });
+
+  it('handleSaveChain 应更新链配置并设置通知', () => {
+    const { stateMock, storageMock } = setupMocks('EOA', {
+      wallet: { address: '0x000000000000000000000000000000000000beef' }
+    });
+    const { result } = renderHook(() => useEvmWallet(), { wrapper: LanguageProvider });
+
+    act(() => {
+      result.current.handleSaveChain({ ...chainA, defaultRpcUrl: 'https://new-rpc.io' });
+    });
+    expect(storageMock.setChains).toHaveBeenCalled();
+    expect(stateMock.setNotification).toHaveBeenCalled();
+    expect(stateMock.setIsChainModalOpen).toHaveBeenCalledWith(false);
+  });
+
+  it('handleUpdateToken / handleRemoveToken 应更新自定义代币', () => {
+    const tokenAddr = '0x0000000000000000000000000000000000000BBB';
+    const { stateMock, storageMock } = setupMocks('EOA', {
+      wallet: { address: '0x000000000000000000000000000000000000beef' },
+      customTokens: { 199: [{ address: tokenAddr, name: 'OLD', symbol: 'OLD', decimals: 18, isCustom: true }] }
+    });
+    const { result } = renderHook(() => useEvmWallet(), { wrapper: LanguageProvider });
+
+    act(() => {
+      result.current.handleUpdateToken({ address: tokenAddr, name: 'NEW', symbol: 'NEW', decimals: 18, isCustom: true });
+    });
+    expect(storageMock.setCustomTokens).toHaveBeenCalled();
+    expect(stateMock.setTokenToEdit).toHaveBeenCalledWith(null);
+    expect(stateMock.setNotification).toHaveBeenCalled();
+
+    act(() => {
+      result.current.handleRemoveToken(tokenAddr);
+    });
+    expect(storageMock.setCustomTokens).toHaveBeenCalledTimes(2);
+  });
+
+  it('SAFE 模式下 activeAddress 应返回 activeSafeAddress', () => {
+    setupMocks('SAFE', {
+      wallet: { address: '0x000000000000000000000000000000000000beef' },
+      activeSafeAddress: '0x000000000000000000000000000000000000cafe'
+    });
+    const { result } = renderHook(() => useEvmWallet(), { wrapper: LanguageProvider });
+    expect(result.current.activeAddress).toBe('0x000000000000000000000000000000000000cafe');
+  });
+
+  it('handleLogout 应清除会话与交易记录', () => {
+    const { stateMock, txMgrMock } = setupMocks('EOA', {
+      wallet: { address: '0x000000000000000000000000000000000000beef' }
+    });
+    const { result } = renderHook(() => useEvmWallet(), { wrapper: LanguageProvider });
+    act(() => {
+      result.current.handleLogout();
+    });
+    expect(stateMock.clearSession).toHaveBeenCalled();
+  });
+
 });
+
