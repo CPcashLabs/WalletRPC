@@ -27,8 +27,106 @@ const fetchWithTimeout = async (input: string, init: RequestInit, timeoutMs: num
   }
 };
 
+const IS_TEST_ENV = typeof process !== 'undefined' && !!(process.env.VITEST || process.env.NODE_ENV === 'test');
+const TRONGRID_BASE_INTERVAL_MS = IS_TEST_ENV ? 1 : 220;
+const TRONGRID_MAX_INTERVAL_MS = IS_TEST_ENV ? 8 : 2000;
+const TRONGRID_RECOVER_STEP_MS = IS_TEST_ENV ? 1 : 40;
+const TRONGRID_MAX_429_RETRIES = 2;
+
+const tronGridRateState = new Map<string, { nextAllowedAt: number; intervalMs: number }>();
+const tronGridHostLocks = new Map<string, Promise<void>>();
+
+const clearTronGridRateLimitState = () => {
+  tronGridRateState.clear();
+  tronGridHostLocks.clear();
+};
+
+const sleepMs = async (ms: number): Promise<void> => {
+  if (ms <= 0) return;
+  await new Promise((resolve) => setTimeout(resolve, ms));
+};
+
+const parseHostFromUrl = (url: string): string => {
+  try {
+    return new URL(url).host.toLowerCase();
+  } catch {
+    return '';
+  }
+};
+
+const isTronGridHost = (host: string): boolean => {
+  return host === 'api.trongrid.io' || host.endsWith('.trongrid.io');
+};
+
+const getTronGridRateState = (host: string): { nextAllowedAt: number; intervalMs: number } => {
+  const existing = tronGridRateState.get(host);
+  if (existing) return existing;
+  const init = { nextAllowedAt: 0, intervalMs: TRONGRID_BASE_INTERVAL_MS };
+  tronGridRateState.set(host, init);
+  return init;
+};
+
+const acquireTronGridHostLock = async (host: string): Promise<() => void> => {
+  while (tronGridHostLocks.has(host)) {
+    await tronGridHostLocks.get(host);
+  }
+  let release!: () => void;
+  const lock = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  tronGridHostLocks.set(host, lock);
+  return () => {
+    if (tronGridHostLocks.get(host) === lock) {
+      tronGridHostLocks.delete(host);
+    }
+    release();
+  };
+};
+
+const fetchWithTronGridRateLimit = async (input: string, init: RequestInit, timeoutMs: number) => {
+  const host = parseHostFromUrl(input);
+  if (!isTronGridHost(host)) {
+    return await fetchWithTimeout(input, init, timeoutMs);
+  }
+
+  const release = await acquireTronGridHostLock(host);
+  const rate = getTronGridRateState(host);
+  try {
+    const waitMs = Math.max(0, rate.nextAllowedAt - Date.now());
+    if (waitMs > 0) await sleepMs(waitMs);
+
+    for (let attempt = 0; attempt <= TRONGRID_MAX_429_RETRIES; attempt++) {
+      let res: Response;
+      try {
+        res = await fetchWithTimeout(input, init, timeoutMs);
+      } catch (e) {
+        rate.nextAllowedAt = Date.now() + rate.intervalMs;
+        throw e;
+      }
+
+      if (res.status === 429) {
+        rate.intervalMs = Math.min(TRONGRID_MAX_INTERVAL_MS, Math.max(rate.intervalMs * 2, TRONGRID_BASE_INTERVAL_MS));
+        rate.nextAllowedAt = Date.now() + rate.intervalMs;
+        if (attempt < TRONGRID_MAX_429_RETRIES) {
+          await sleepMs(rate.intervalMs);
+          continue;
+        }
+        return res;
+      }
+
+      rate.intervalMs = Math.max(TRONGRID_BASE_INTERVAL_MS, rate.intervalMs - TRONGRID_RECOVER_STEP_MS);
+      rate.nextAllowedAt = Date.now() + rate.intervalMs;
+      return res;
+    }
+
+    throw new Error('Unexpected retry loop termination');
+  } finally {
+    release();
+  }
+};
+
 const postJson = async <T>(url: string, body: unknown, timeoutMs: number = 8000): Promise<T> => {
-  const res = await fetchWithTimeout(
+  const res = await fetchWithTronGridRateLimit(
     url,
     {
       method: 'POST',
@@ -38,7 +136,7 @@ const postJson = async <T>(url: string, body: unknown, timeoutMs: number = 8000)
     timeoutMs
   );
   if (!res.ok) {
-    throw new Error(`HTTP ${res.status}`);
+    throw new HttpStatusError(res.status);
   }
   try {
     return (await res.json()) as T;
@@ -47,15 +145,30 @@ const postJson = async <T>(url: string, body: unknown, timeoutMs: number = 8000)
   }
 };
 
+class HttpStatusError extends Error {
+  status: number;
+
+  constructor(status: number) {
+    super(`HTTP ${status}`);
+    this.name = 'HttpStatusError';
+    this.status = status;
+  }
+}
+
 const postJsonFirstSuccess = async <T>(
-  requests: Array<{ url: string; body: unknown; timeoutMs?: number }>
+  requests: Array<{ url: string; body: unknown; timeoutMs?: number }>,
+  options?: { stopOnStatusCodes?: number[] }
 ): Promise<T> => {
+  const stopOnStatusCodes = new Set(options?.stopOnStatusCodes || []);
   let lastError: unknown = null;
   for (const req of requests) {
     try {
       return await postJson<T>(req.url, req.body, req.timeoutMs);
     } catch (e) {
       lastError = e;
+      if (e instanceof HttpStatusError && stopOnStatusCodes.has(e.status)) {
+        throw e;
+      }
     }
   }
   throw lastError instanceof Error ? lastError : new Error('All endpoint attempts failed');
@@ -66,7 +179,7 @@ type TronTxResult = { success: boolean; txid?: string; error?: string };
 const toTxPayload = (raw: any): any => {
   if (!raw) throw new Error('Empty transaction payload');
   if (raw.transaction) return raw.transaction;
-  if (raw.txID && raw.raw_data) return raw;
+  if (raw.txID) return raw;
   throw new Error('Invalid transaction payload');
 };
 
@@ -74,6 +187,201 @@ const parseApiError = (raw: any): string => {
   const msg = raw?.message || raw?.Error || raw?.code || 'Unknown error';
   const decoded = tryDecodeHexAscii(msg) || tryDecodeBase64Ascii(msg);
   return decoded || String(msg);
+};
+
+const TRON_CONTRACT_TYPES = {
+  TRANSFER: 1,
+  VOTE_WITNESS: 4,
+  WITHDRAW_BALANCE: 13,
+  TRIGGER_SMART_CONTRACT: 31,
+  FREEZE_BALANCE_V2: 54,
+  UNFREEZE_BALANCE_V2: 55,
+  WITHDRAW_EXPIRE_UNFREEZE: 56
+} as const;
+
+const getPermissionFieldPayloads = (permissionId?: number): Array<Record<string, string | number>> => {
+  if (!Number.isInteger(permissionId) || Number(permissionId) <= 0) return [{}];
+  const id = Number(permissionId);
+  return [
+    { Permission_id: id },
+    { permission_id: id },
+    { Permission_id: String(id) },
+    { permission_id: String(id) },
+    { permissionId: id },
+    { permissionId: String(id) },
+    { Permission_id: id, permission_id: id }
+  ];
+};
+
+const isPermissionMismatchError = (msg: unknown): boolean => {
+  const s = String(msg || '').toLowerCase();
+  if (!s) return false;
+  return (
+    s.includes('not contained of permission') ||
+    s.includes('validate signature error') ||
+    (s.includes('permission') && s.includes('sign'))
+  );
+};
+
+const extractTransactionPermissionId = (raw: any): number | undefined => {
+  const tx = raw?.transaction || raw;
+  const contracts = tx?.raw_data?.contract;
+  if (!Array.isArray(contracts) || contracts.length === 0) return undefined;
+  const pid = contracts[0]?.Permission_id ?? contracts[0]?.permission_id ?? contracts[0]?.permissionId;
+  const n = Number(pid);
+  if (!Number.isInteger(n)) return undefined;
+  return n;
+};
+
+const isPermissionApplied = (raw: any, permissionId?: number): boolean => {
+  if (!Number.isInteger(permissionId) || Number(permissionId) <= 0) return true;
+  return extractTransactionPermissionId(raw) === Number(permissionId);
+};
+
+const postJsonWithPermissionVariants = async <T>(
+  url: string,
+  body: Record<string, unknown>,
+  permissionId?: number,
+  timeoutMs?: number
+): Promise<T> => {
+  let lastError: unknown = null;
+  let lastTx: T | null = null;
+  for (const permFields of getPermissionFieldPayloads(permissionId)) {
+    try {
+      const tx = await postJson<T>(url, { ...body, ...permFields }, timeoutMs);
+      lastTx = tx;
+      if (isPermissionApplied(tx, permissionId)) return tx;
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  if (lastTx) {
+    throw new Error(`Permission id ${Number(permissionId)} was not applied by node`);
+  }
+  throw lastError ?? new Error('All permission variants failed');
+};
+
+const postJsonFirstSuccessWithPermissionVariants = async <T>(
+  requests: Array<{ url: string; body: Record<string, unknown>; timeoutMs?: number }>,
+  permissionId?: number,
+  options?: { stopOnStatusCodes?: number[] }
+): Promise<T> => {
+  let lastError: unknown = null;
+  let lastTx: T | null = null;
+  for (const permFields of getPermissionFieldPayloads(permissionId)) {
+    try {
+      const tx = await postJsonFirstSuccess<T>(
+        requests.map((r) => ({ ...r, body: { ...r.body, ...permFields } })),
+        options
+      );
+      lastTx = tx;
+      if (isPermissionApplied(tx, permissionId)) return tx;
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  if (lastTx) {
+    throw new Error(`Permission id ${Number(permissionId)} was not applied by node`);
+  }
+  throw lastError ?? new Error('All permission variants failed');
+};
+
+const normalizeTronAddressToHex41 = (input: unknown): string => {
+  const raw = String(input || '').trim();
+  if (!raw) return '';
+  if (raw.startsWith('T')) return TronService.toHexAddress(raw).replace(/^0x/i, '').toLowerCase();
+  const hex = raw.replace(/^0x/i, '');
+  if (!/^[0-9a-fA-F]{42}$/.test(hex) || !hex.toLowerCase().startsWith('41')) return '';
+  return hex.toLowerCase();
+};
+
+const matchSignerWeight = (permission: any, signerHexLower: string): number => {
+  const keys = Array.isArray(permission?.keys) ? permission.keys : [];
+  let weight = 0;
+  for (const key of keys) {
+    const addr = normalizeTronAddressToHex41(key?.address);
+    if (!addr || addr !== signerHexLower) continue;
+    const w = Number(key?.weight || 0);
+    if (Number.isFinite(w) && w > 0) weight += w;
+  }
+  return weight;
+};
+
+const permissionAllowsContractType = (operations: unknown, contractType: number): boolean | null => {
+  if (typeof operations !== 'string' || !operations) return null;
+  const hex = operations.replace(/^0x/i, '');
+  if (!hex || hex.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(hex)) return null;
+  const byteIndex = Math.floor(contractType / 8);
+  const bitIndex = contractType % 8;
+  if (byteIndex < 0 || byteIndex * 2 + 2 > hex.length) return false;
+  const byteVal = parseInt(hex.slice(byteIndex * 2, byteIndex * 2 + 2), 16);
+  return (byteVal & (1 << bitIndex)) !== 0;
+};
+
+const resolveActivePermissionIdForSigner = async (
+  baseUrl: string,
+  ownerAddress: string,
+  contractType: number
+): Promise<number | undefined> => {
+  const signerHex = normalizeTronAddressToHex41(ownerAddress);
+  if (!signerHex) return undefined;
+  const ownerHex = signerHex;
+  if (!ownerHex) return undefined;
+
+  const account = await postJson<any>(`${baseUrl}/wallet/getaccount`, {
+    address: ownerHex,
+    visible: false
+  });
+  const activePermissions = Array.isArray(account?.active_permission)
+    ? account.active_permission
+    : Array.isArray(account?.active_permissions)
+      ? account.active_permissions
+      : [];
+  if (!activePermissions.length) return undefined;
+
+  const candidates: Array<{ id: number; allowByOps: boolean | null }> = [];
+  for (const perm of activePermissions) {
+    const id = Number(perm?.id);
+    if (!Number.isInteger(id) || id <= 0) continue;
+    const threshold = Number(perm?.threshold || 1);
+    if (!Number.isFinite(threshold) || threshold <= 0) continue;
+    const signerWeight = matchSignerWeight(perm, signerHex);
+    if (signerWeight < threshold) continue;
+    candidates.push({ id, allowByOps: permissionAllowsContractType(perm?.operations, contractType) });
+  }
+  if (!candidates.length) return undefined;
+
+  candidates.sort((a, b) => a.id - b.id);
+  const allowed = candidates.find((c) => c.allowByOps === true);
+  if (allowed) return allowed.id;
+  const unknown = candidates.find((c) => c.allowByOps === null);
+  if (unknown) return unknown.id;
+  return candidates[0].id;
+};
+
+const signAndBroadcastWithPermissionFallback = async (
+  baseUrl: string,
+  privateKey: string,
+  ownerAddress: string,
+  contractType: number,
+  txPayload: any,
+  rebuildTxWithPermission: (permissionId: number) => Promise<any>
+): Promise<TronTxResult> => {
+  const first = await signAndBroadcast(baseUrl, privateKey, txPayload);
+  if (first.success || !isPermissionMismatchError(first.error)) return first;
+  const firstMsg = first.error || 'Broadcast failed';
+
+  try {
+    const permissionId = await resolveActivePermissionIdForSigner(baseUrl, ownerAddress, contractType);
+    if (!Number.isInteger(permissionId) || Number(permissionId) <= 0) {
+      return { success: false, error: `${firstMsg} (no matching active permission found for signer)` };
+    }
+    const retryTx = await rebuildTxWithPermission(Number(permissionId));
+    return await signAndBroadcast(baseUrl, privateKey, retryTx);
+  } catch (e) {
+    const retryMsg = e instanceof Error ? e.message : String(e);
+    return { success: false, error: `${firstMsg} (permission fallback failed: ${retryMsg})` };
+  }
 };
 
 const signAndBroadcast = async (baseUrl: string, privateKey: string, txPayload: any): Promise<TronTxResult> => {
@@ -260,10 +568,14 @@ export const TronService = {
       return cached.witnesses;
     }
     try {
-      const data = await postJsonFirstSuccess<any>([
-        { url: `${baseUrl}/wallet/listwitnesses`, body: {} },
-        { url: `${baseUrl}/wallet/listWitnesses`, body: {} }
-      ]);
+      const data = await postJsonFirstSuccess<any>(
+        [
+          { url: `${baseUrl}/wallet/listwitnesses`, body: {} },
+          { url: `${baseUrl}/wallet/listWitnesses`, body: {} }
+        ],
+        // 对 429 不继续做大小写端点回退，避免触发额外同类请求。
+        { stopOnStatusCodes: [429] }
+      );
       const list = Array.isArray(data?.witnesses) ? data.witnesses : [];
       const witnesses = list
         .map((w: any) => {
@@ -351,14 +663,25 @@ export const TronService = {
     const ownerHex = TronService.toHexAddress(ownerAddress).replace('0x', '');
     if (!ownerHex) return { success: false, error: 'Invalid owner address' };
     try {
-      const tx = await postJson<any>(`${baseUrl}/wallet/freezebalancev2`, {
-        owner_address: ownerHex,
-        frozen_balance: toSafeAmountNumber(amountSun),
-        resource: toResource(resource),
-        visible: false
-      });
-      if (tx?.result?.result === false) return { success: false, error: parseApiError(tx) };
-      return await signAndBroadcast(baseUrl, privateKey, tx);
+      const buildTx = async (permissionId?: number) => {
+        const tx = await postJsonWithPermissionVariants<any>(`${baseUrl}/wallet/freezebalancev2`, {
+          owner_address: ownerHex,
+          frozen_balance: toSafeAmountNumber(amountSun),
+          resource: toResource(resource),
+          visible: false
+        }, permissionId);
+        if (tx?.result?.result === false) throw new Error(parseApiError(tx));
+        return tx;
+      };
+      const tx = await buildTx();
+      return await signAndBroadcastWithPermissionFallback(
+        baseUrl,
+        privateKey,
+        ownerAddress,
+        TRON_CONTRACT_TYPES.FREEZE_BALANCE_V2,
+        tx,
+        async (permissionId) => buildTx(permissionId)
+      );
     } catch (e: any) {
       devError('TRON stakeResource failed', e);
       return { success: false, error: e?.message || 'stake failed' };
@@ -376,14 +699,25 @@ export const TronService = {
     const ownerHex = TronService.toHexAddress(ownerAddress).replace('0x', '');
     if (!ownerHex) return { success: false, error: 'Invalid owner address' };
     try {
-      const tx = await postJson<any>(`${baseUrl}/wallet/unfreezebalancev2`, {
-        owner_address: ownerHex,
-        unfreeze_balance: toSafeAmountNumber(amountSun),
-        resource: toResource(resource),
-        visible: false
-      });
-      if (tx?.result?.result === false) return { success: false, error: parseApiError(tx) };
-      return await signAndBroadcast(baseUrl, privateKey, tx);
+      const buildTx = async (permissionId?: number) => {
+        const tx = await postJsonWithPermissionVariants<any>(`${baseUrl}/wallet/unfreezebalancev2`, {
+          owner_address: ownerHex,
+          unfreeze_balance: toSafeAmountNumber(amountSun),
+          resource: toResource(resource),
+          visible: false
+        }, permissionId);
+        if (tx?.result?.result === false) throw new Error(parseApiError(tx));
+        return tx;
+      };
+      const tx = await buildTx();
+      return await signAndBroadcastWithPermissionFallback(
+        baseUrl,
+        privateKey,
+        ownerAddress,
+        TRON_CONTRACT_TYPES.UNFREEZE_BALANCE_V2,
+        tx,
+        async (permissionId) => buildTx(permissionId)
+      );
     } catch (e: any) {
       devError('TRON unstakeResource failed', e);
       return { success: false, error: e?.message || 'unstake failed' };
@@ -396,12 +730,23 @@ export const TronService = {
     const ownerHex = TronService.toHexAddress(ownerAddress).replace('0x', '');
     if (!ownerHex) return { success: false, error: 'Invalid owner address' };
     try {
-      const tx = await postJson<any>(`${baseUrl}/wallet/withdrawexpireunfreeze`, {
-        owner_address: ownerHex,
-        visible: false
-      });
-      if (tx?.result?.result === false) return { success: false, error: parseApiError(tx) };
-      return await signAndBroadcast(baseUrl, privateKey, tx);
+      const buildTx = async (permissionId?: number) => {
+        const tx = await postJsonWithPermissionVariants<any>(`${baseUrl}/wallet/withdrawexpireunfreeze`, {
+          owner_address: ownerHex,
+          visible: false
+        }, permissionId);
+        if (tx?.result?.result === false) throw new Error(parseApiError(tx));
+        return tx;
+      };
+      const tx = await buildTx();
+      return await signAndBroadcastWithPermissionFallback(
+        baseUrl,
+        privateKey,
+        ownerAddress,
+        TRON_CONTRACT_TYPES.WITHDRAW_EXPIRE_UNFREEZE,
+        tx,
+        async (permissionId) => buildTx(permissionId)
+      );
     } catch (e: any) {
       devError('TRON withdrawUnfreeze failed', e);
       return { success: false, error: e?.message || 'withdraw unfreeze failed' };
@@ -433,26 +778,37 @@ export const TronService = {
       .filter((v) => TronService.isValidBase58Address(v.vote_address) && v.vote_count > 0);
     if (normalizedVotesHex.length === 0) return { success: false, error: 'Vote count must be greater than 0' };
     try {
-      const tx = await postJsonFirstSuccess<any>([
-        {
-          url: `${baseUrl}/wallet/votewitnessaccount`,
-          body: {
-            owner_address: ownerHex,
-            votes: normalizedVotesHex,
-            visible: false
+      const buildTx = async (permissionId?: number) => {
+        const tx = await postJsonFirstSuccessWithPermissionVariants<any>([
+          {
+            url: `${baseUrl}/wallet/votewitnessaccount`,
+            body: {
+              owner_address: ownerHex,
+              votes: normalizedVotesHex,
+              visible: false
+            }
+          },
+          {
+            url: `${baseUrl}/wallet/votewitnessaccount`,
+            body: {
+              owner_address: ownerAddress,
+              votes: normalizedVotesBase58,
+              visible: true
+            }
           }
-        },
-        {
-          url: `${baseUrl}/wallet/votewitnessaccount`,
-          body: {
-            owner_address: ownerAddress,
-            votes: normalizedVotesBase58,
-            visible: true
-          }
-        }
-      ]);
-      if (tx?.result?.result === false) return { success: false, error: parseApiError(tx) };
-      return await signAndBroadcast(baseUrl, privateKey, tx);
+        ], permissionId);
+        if (tx?.result?.result === false) throw new Error(parseApiError(tx));
+        return tx;
+      };
+      const tx = await buildTx();
+      return await signAndBroadcastWithPermissionFallback(
+        baseUrl,
+        privateKey,
+        ownerAddress,
+        TRON_CONTRACT_TYPES.VOTE_WITNESS,
+        tx,
+        async (permissionId) => buildTx(permissionId)
+      );
     } catch (e: any) {
       devError('TRON voteWitnesses failed', e);
       return { success: false, error: e?.message || 'vote failed' };
@@ -517,12 +873,23 @@ export const TronService = {
     const ownerHex = TronService.toHexAddress(ownerAddress).replace('0x', '');
     if (!ownerHex) return { success: false, error: 'Invalid owner address' };
     try {
-      const tx = await postJson<any>(`${baseUrl}/wallet/withdrawbalance`, {
-        owner_address: ownerHex,
-        visible: false
-      });
-      if (tx?.result?.result === false) return { success: false, error: parseApiError(tx) };
-      return await signAndBroadcast(baseUrl, privateKey, tx);
+      const buildTx = async (permissionId?: number) => {
+        const tx = await postJsonWithPermissionVariants<any>(`${baseUrl}/wallet/withdrawbalance`, {
+          owner_address: ownerHex,
+          visible: false
+        }, permissionId);
+        if (tx?.result?.result === false) throw new Error(parseApiError(tx));
+        return tx;
+      };
+      const tx = await buildTx();
+      return await signAndBroadcastWithPermissionFallback(
+        baseUrl,
+        privateKey,
+        ownerAddress,
+        TRON_CONTRACT_TYPES.WITHDRAW_BALANCE,
+        tx,
+        async (permissionId) => buildTx(permissionId)
+      );
     } catch (e: any) {
       devError('TRON claimReward failed', e);
       return { success: false, error: e?.message || 'claim reward failed' };
@@ -581,63 +948,59 @@ export const TronService = {
     if (!ownerHex || !toHex) return { success: false, error: 'Invalid address' };
 
     try {
-      let transaction: any;
+      const buildUnsignedTx = async (permissionId?: number): Promise<any> => {
+        if (contractAddress) {
+          // TRC20 Transfer
+          const contractHex = TronService.toHexAddress(contractAddress).replace('0x', '');
+          if (!contractHex) throw new Error('Invalid contract address');
+          const functionSelector = "transfer(address,uint256)";
+          const parameter = toHex.padStart(64, '0') + amount.toString(16).padStart(64, '0');
 
-      if (contractAddress) {
-        // TRC20 Transfer
-        const contractHex = TronService.toHexAddress(contractAddress).replace('0x', '');
-        if (!contractHex) throw new Error('Invalid contract address');
-        const functionSelector = "transfer(address,uint256)";
-        const parameter = toHex.padStart(64, '0') + amount.toString(16).padStart(64, '0');
-
-        const result = await postJson<any>(`${baseUrl}/wallet/triggersmartcontract`, {
-          owner_address: ownerHex,
-          contract_address: contractHex,
-          function_selector: functionSelector,
-          parameter: parameter,
-          fee_limit: 100000000, // 100 TRX limit
-          visible: false
-        });
-        if (!result.result?.result) {
-          const raw = result.result?.message || result.message || 'Trigger contract failed';
-          const decoded = tryDecodeHexAscii(raw) || tryDecodeBase64Ascii(raw);
-          throw new Error(decoded || String(raw));
+          const result = await postJsonWithPermissionVariants<any>(`${baseUrl}/wallet/triggersmartcontract`, {
+            owner_address: ownerHex,
+            contract_address: contractHex,
+            function_selector: functionSelector,
+            parameter: parameter,
+            fee_limit: 100000000, // 100 TRX limit
+            visible: false
+          }, permissionId);
+          if (!result.result?.result) {
+            const raw = result.result?.message || result.message || 'Trigger contract failed';
+            const decoded = tryDecodeHexAscii(raw) || tryDecodeBase64Ascii(raw);
+            throw new Error(decoded || String(raw));
+          }
+          return result.transaction;
         }
-        transaction = result.transaction;
-      } else {
         // Native TRX Transfer
         const amountNumber = Number(amount);
         if (!Number.isSafeInteger(amountNumber) || amountNumber < 0) {
           throw new Error("TRX amount exceeds safe integer range");
         }
-        transaction = await postJson<any>(`${baseUrl}/wallet/createtransaction`, {
+        return await postJsonWithPermissionVariants<any>(`${baseUrl}/wallet/createtransaction`, {
           owner_address: ownerHex,
           to_address: toHex,
           amount: amountNumber,
           visible: false
-        });
-      }
+        }, permissionId);
+      };
 
+      const transaction = await buildUnsignedTx();
       if (transaction.Error) throw new Error(transaction.Error);
-
-      // 本地签名
-      const signingKey = new ethers.SigningKey(privateKey);
-      const signature = signingKey.sign("0x" + transaction.txID);
-      // TRON 签名格式：[r, s, v] 拼接，v 为 0 或 1
-      const sigHex = signature.r.slice(2) + signature.s.slice(2) + (signature.v - 27).toString(16).padStart(2, '0');
-      
-      const signedTx = { ...transaction, signature: [sigHex] };
-
-      // 广播
-      const broadcastResult = await postJson<any>(`${baseUrl}/wallet/broadcasttransaction`, signedTx);
-
-      if (broadcastResult.result) {
-        return { success: true, txid: transaction.txID };
-      } else {
-        const raw = broadcastResult.message || broadcastResult.code || "Broadcast failed";
-        const decoded = tryDecodeHexAscii(raw) || tryDecodeBase64Ascii(raw);
-        return { success: false, error: decoded || String(raw) };
-      }
+      const contractType = contractAddress
+        ? TRON_CONTRACT_TYPES.TRIGGER_SMART_CONTRACT
+        : TRON_CONTRACT_TYPES.TRANSFER;
+      return await signAndBroadcastWithPermissionFallback(
+        baseUrl,
+        privateKey,
+        ownerAddress,
+        contractType,
+        transaction,
+        async (permissionId) => {
+          const retryTx = await buildUnsignedTx(permissionId);
+          if (retryTx?.Error) throw new Error(retryTx.Error);
+          return retryTx;
+        }
+      );
     } catch (e: any) {
       devError("TRON send failed", e);
       return { success: false, error: e.message };
@@ -691,9 +1054,15 @@ export const __TRON_TEST__ = {
   fetchWithTimeout,
   postJson,
   postJsonFirstSuccess,
+  clearTronGridRateLimitState,
+  normalizeTronAddressToHex41,
+  permissionAllowsContractType,
+  resolveActivePermissionIdForSigner,
+  isPermissionMismatchError,
   toTxPayload,
   parseApiError,
   signAndBroadcast,
+  signAndBroadcastWithPermissionFallback,
   toResource,
   toSafeAmountNumber,
   tryDecodeHexAscii,

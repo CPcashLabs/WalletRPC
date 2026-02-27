@@ -8,6 +8,7 @@ describe('TronService internals', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     __TRON_TEST__.clearWitnessCache();
+    __TRON_TEST__.clearTronGridRateLimitState();
   });
 
   it('bytesToHex/toResource/toSafeAmountNumber 覆盖分支', () => {
@@ -46,6 +47,71 @@ describe('TronService internals', () => {
     const b64 = Buffer.from('fallback-via-buffer').toString('base64');
     expect(__TRON_TEST__.tryDecodeBase64Ascii(b64)).toBe('fallback-via-buffer');
     (globalThis as any).atob = oldAtob;
+  });
+
+  it('permission 分支：可识别权限签名报错文案，并解析 active permission id', async () => {
+    expect(
+      __TRON_TEST__.isPermissionMismatchError(
+        'Validate signature error: xxx is signed by Txxx but it is not contained of permission'
+      )
+    ).toBe(true);
+
+    expect(__TRON_TEST__.normalizeTronAddressToHex41(HEX_TRON_ADDR)).toBe(`41${'1'.repeat(40)}`);
+
+    vi.spyOn(globalThis, 'fetch' as any).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        active_permission: [
+          {
+            id: 2,
+            threshold: 1,
+            keys: [{ address: `41${'1'.repeat(40)}`, weight: 1 }]
+          }
+        ]
+      })
+    } as any);
+
+    await expect(
+      __TRON_TEST__.resolveActivePermissionIdForSigner('https://nile.trongrid.io', HEX_TRON_ADDR, 54)
+    ).resolves.toBe(2);
+  });
+
+  it('permission 分支：给定 self 权限账户时应解析到 permission_id=4', async () => {
+    vi.spyOn(globalThis, 'fetch' as any).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        active_permission: [
+          {
+            id: 2,
+            threshold: 1,
+            operations: '7fff1fc0033ec30f000000000000000000000000000000000000000000000000',
+            keys: [{ address: '415921572671dbf6441f2caaaf2f7d53edb6cd261a', weight: 1 }]
+          },
+          {
+            id: 3,
+            threshold: 1,
+            operations: '1020000000004006000000000000000000000000000000000000000000000000',
+            keys: [{ address: '41dee3ac4e2d04b2855793edd35a6265ae89145ca4', weight: 1 }]
+          },
+          {
+            id: 4,
+            threshold: 1,
+            operations: '1020000000004006000000000000000000000000000000000000000000000000',
+            keys: [{ address: '41936559c3b3d4c6d44460fdcd7245393391a3298f', weight: 1 }]
+          }
+        ]
+      })
+    } as any);
+
+    await expect(
+      __TRON_TEST__.resolveActivePermissionIdForSigner(
+        'https://api.trongrid.io',
+        'TPQZkDxLDJpatFvbP1DSLkUiKNumBzRTrM',
+        13
+      )
+    ).resolves.toBe(4);
   });
 
   it('toTxPayload 处理 transaction/raw/非法输入', () => {
@@ -90,6 +156,24 @@ describe('TronService internals', () => {
     ).rejects.toThrow(/HTTP 502/);
 
     await expect(__TRON_TEST__.postJsonFirstSuccess([])).rejects.toThrow('All endpoint attempts failed');
+  });
+
+  it('postJsonFirstSuccess 命中 stopOnStatusCodes 时应停止回退', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch' as any);
+    fetchMock
+      .mockResolvedValueOnce({ ok: false, status: 429, json: async () => ({}) } as any)
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ ok: 1 }) } as any);
+
+    await expect(
+      __TRON_TEST__.postJsonFirstSuccess(
+        [
+          { url: 'https://a', body: {} },
+          { url: 'https://b', body: {} }
+        ],
+        { stopOnStatusCodes: [429] }
+      )
+    ).rejects.toThrow(/HTTP 429/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('signAndBroadcast 成功、缺失 txID、广播失败解码', async () => {
@@ -238,6 +322,21 @@ describe('TronService internals', () => {
     expect(Array.isArray(out)).toBe(true);
   });
 
+  it('getNodeWitnesses 命中 429 时不继续大小写回退请求', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch' as any);
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 429,
+      json: async () => ({})
+    } as any);
+
+    const out = await TronService.getNodeWitnesses('https://nile.trongrid.io');
+    expect(out).toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const urls = fetchMock.mock.calls.map((c) => String(c[0]));
+    expect(urls.every((u) => u.endsWith('/wallet/listwitnesses'))).toBe(true);
+  });
+
   it('getAccountResources / getCanWithdrawUnfreeze 缺字段时回退默认值', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch' as any);
     fetchMock
@@ -328,6 +427,114 @@ describe('TronService internals', () => {
     expect(a.error).toContain('stake failed');
     expect(b.error).toContain('claim reward failed');
     expect(String(c.error)).toContain('All endpoint attempts failed');
+  });
+
+  it('stakeResource 在广播签名权限错误时应使用 active permission_id 重试', async () => {
+    vi.spyOn(TronService, 'addressFromPrivateKey').mockReturnValue(HEX_TRON_ADDR);
+    const fetchMock = vi.spyOn(globalThis, 'fetch' as any);
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ txID: 'a'.repeat(64), raw_data: {} })
+      } as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          result: false,
+          message: 'Validate signature error: xxx is signed by Txxx but it is not contained of permission'
+        })
+      } as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          active_permission: [
+            {
+              id: 2,
+              threshold: 1,
+              keys: [{ address: `41${'1'.repeat(40)}`, weight: 1 }]
+            }
+          ]
+        })
+      } as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          txID: 'b'.repeat(64),
+          raw_data: {
+            contract: [{ Permission_id: 2 }]
+          }
+        })
+      } as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ result: true })
+      } as any);
+
+    const out = await TronService.stakeResource('https://nile.trongrid.io', PRIVATE_KEY, 1n, 'ENERGY');
+    expect(out).toEqual({ success: true, txid: 'b'.repeat(64) });
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+
+    const retryBuildBody = JSON.parse(String((fetchMock.mock.calls[3]?.[1] as any)?.body || '{}'));
+    expect(retryBuildBody.Permission_id ?? retryBuildBody.permission_id ?? retryBuildBody.permissionId).toBe(2);
+  });
+
+  it('claimReward 权限重试时，若节点未回填 Permission_id 应继续尝试下一个字段变体', async () => {
+    vi.spyOn(TronService, 'addressFromPrivateKey').mockReturnValue(HEX_TRON_ADDR);
+    const fetchMock = vi.spyOn(globalThis, 'fetch' as any);
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ txID: 'a'.repeat(64), raw_data: { contract: [{}] } })
+      } as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          result: false,
+          message: 'Validate signature error: x is signed by Txxx but it is not contained of permission'
+        })
+      } as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          active_permission: [
+            {
+              id: 4,
+              threshold: 1,
+              operations: '1020000000004006000000000000000000000000000000000000000000000000',
+              keys: [{ address: `41${'1'.repeat(40)}`, weight: 1 }]
+            }
+          ]
+        })
+      } as any)
+      // 第一次 permission 变体：节点返回了 tx，但未写入 Permission_id，应该继续尝试
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ txID: 'b'.repeat(64), raw_data: { contract: [{}] } })
+      } as any)
+      // 第二次 permission 变体：写入 Permission_id，进入广播
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ txID: 'c'.repeat(64), raw_data: { contract: [{ Permission_id: 4 }] } })
+      } as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ result: true })
+      } as any);
+
+    const out = await TronService.claimReward('https://api.trongrid.io', PRIVATE_KEY);
+    expect(out).toEqual({ success: true, txid: 'c'.repeat(64) });
+    expect(fetchMock).toHaveBeenCalledTimes(6);
   });
 
   it('claimReward 在 owner 地址无效时应直接失败', async () => {

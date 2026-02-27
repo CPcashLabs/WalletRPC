@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { TronService } from '../../services/tronService';
+import { __TRON_TEST__, TronService } from '../../services/tronService';
 
 const TEST_PRIVATE_KEY = '0x59c6995e998f97a5a0044966f0945382d7f9e9955f5d5f8d6f2ad4d9c7cb4d95';
 const HEX_TRON_ADDR = `0x41${'1'.repeat(40)}`;
@@ -7,6 +7,7 @@ const HEX_TRON_ADDR = `0x41${'1'.repeat(40)}`;
 describe('TronService', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    __TRON_TEST__.clearTronGridRateLimitState();
   });
 
   it('地址校验可以拦截明显非法输入', () => {

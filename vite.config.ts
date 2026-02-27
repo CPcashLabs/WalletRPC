@@ -11,6 +11,12 @@ export default defineConfig(({ command }) => {
     base: command === 'build' ? './' : '/',
     plugins: [react()],
     build: {
+      // Single-file output is intentionally bundled into one JS asset,
+      // so the default 500 kB warning threshold is too strict for this mode.
+      chunkSizeWarningLimit: isSingleFileBuild ? 900 : 500,
+      // Our single-file artifact targets modern Chromium/WebView runtimes.
+      // Raising target here avoids extra transforms and shrinks bundle size a bit.
+      target: isSingleFileBuild ? 'es2022' : undefined,
       cssCodeSplit: !isSingleFileBuild,
       assetsInlineLimit: isSingleFileBuild ? 1024 * 1024 * 100 : 4096,
       rollupOptions: {

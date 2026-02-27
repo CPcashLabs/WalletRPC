@@ -72,6 +72,13 @@ npm install
 npm run dev
 ```
 
+Local single-file deployment (default preview):
+
+```bash
+npm run preview
+# serves dist-single/index.html at http://localhost:3000
+```
+
 ## Common Commands
 
 ```bash
@@ -95,6 +102,12 @@ npm run build
 
 # Build (single-file deployable HTML)
 npm run build:single
+
+# Preview single-file deployment on localhost:3000 (default deployment mode)
+npm run preview
+
+# Preview regular dist (multi-file) on localhost:4173
+npm run preview:dist
 ```
 
 ## Single-File Production Build (IPFS-Friendly)
