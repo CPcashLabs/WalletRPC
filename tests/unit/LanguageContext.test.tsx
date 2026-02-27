@@ -46,6 +46,23 @@ describe('LanguageContext', () => {
         expect(result.current.language).toBe('en');
     });
 
+    it('支持标准化存储值：zh-* 会归一为 zh-SG', () => {
+        localStorage.setItem('walletrpc_lang', 'zh-CN');
+        const { result } = renderHook(() => useTranslation(), { wrapper: LanguageProvider });
+        expect(result.current.language).toBe('zh-SG');
+        expect(localStorage.getItem('walletrpc_lang')).toBe('zh-SG');
+    });
+
+    it('当 navigator.language 不可用时回退使用 navigator.languages', () => {
+        const languageGetter = vi.spyOn(window.navigator, 'language', 'get');
+        languageGetter.mockReturnValue('');
+        const languagesGetter = vi.spyOn(window.navigator, 'languages', 'get');
+        languagesGetter.mockReturnValue(['zh-CN', 'en-US']);
+
+        const { result } = renderHook(() => useTranslation(), { wrapper: LanguageProvider });
+        expect(result.current.language).toBe('zh-SG');
+    });
+
     it('setLanguage 更新状态并持久化', () => {
         const { result } = renderHook(() => useTranslation(), { wrapper: LanguageProvider });
 

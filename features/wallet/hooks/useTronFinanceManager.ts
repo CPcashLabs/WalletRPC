@@ -19,6 +19,7 @@ type FailedSnapshot =
 type OneClickInput = {
   resource: TronResourceType;
   stakeAmountSun: bigint;
+  stakeAllAfterClaim?: boolean;
   votes: Array<{ address: string; votes: number }>;
 };
 
@@ -42,6 +43,7 @@ interface UseTronFinanceManagerParams {
   activeAddress: string | null;
   tronPrivateKey: string | null;
   enabled: boolean;
+  t: (path: string) => string;
   setError: (msg: string | null) => void;
   setNotification: (msg: string | null) => void;
   addTransactionRecord: (record: TransactionRecord) => void;
@@ -53,17 +55,27 @@ const TRON_CONFIRM_TIMEOUT_MS = 90_000;
 const TRON_CONFIRM_POLL_INTERVAL_MS = 1_500;
 const TRON_POWER_SYNC_TIMEOUT_MS = 25_000;
 const TRON_POWER_SYNC_POLL_MS = 1_200;
+const ONE_CLICK_TRX_RESERVE_SUN = 100_000_000n;
+const TRON_FINANCE_INIT_REFRESH_DEDUPE_MS = 1_500;
+const TRON_FINANCE_INIT_REFRESH_TTL_MS = 60_000;
 const ONE_CLICK_DEFAULT_STEPS: OneClickProgress['steps'] = [
   { key: 'claim', label: '领取奖励', status: 'pending' },
   { key: 'stake', label: '追加质押', status: 'pending' },
   { key: 'vote', label: '平均再投票', status: 'pending' }
 ];
+const tronFinanceInitRefreshMap = new Map<string, number>();
+export const __tronFinanceTesting = {
+  clearInitRefreshDedupe: () => {
+    tronFinanceInitRefreshMap.clear();
+  }
+};
 
 export const useTronFinanceManager = ({
   activeChain,
   activeAddress,
   tronPrivateKey,
   enabled,
+  t,
   setError,
   setNotification,
   addTransactionRecord,
@@ -168,6 +180,16 @@ export const useTronFinanceManager = ({
       setReward({ claimableSun: 0n, canClaim: false });
       return;
     }
+    const now = Date.now();
+    const staleAt = now - TRON_FINANCE_INIT_REFRESH_TTL_MS;
+    for (const [key, ts] of tronFinanceInitRefreshMap) {
+      if (ts < staleAt) tronFinanceInitRefreshMap.delete(key);
+    }
+    const refreshKey = `${activeChain.id}|${rpcHost}|${activeAddress}`;
+    const lastAt = tronFinanceInitRefreshMap.get(refreshKey) || 0;
+    // React StrictMode 在开发环境会触发 mount 双执行，这里做短窗口去重避免瞬时重复 RPC。
+    if (now - lastAt < TRON_FINANCE_INIT_REFRESH_DEDUPE_MS) return;
+    tronFinanceInitRefreshMap.set(refreshKey, now);
     refreshFinanceData();
   }, [enabled, isTron, activeAddress, activeChain.id, rpcHost, refreshFinanceData]);
 
@@ -379,29 +401,6 @@ export const useTronFinanceManager = ({
           steps: prev.steps.map((s) => (s.key === key ? { ...s, status, detail, ...extra } : s))
         }));
       };
-
-      setFailedSnapshot(null);
-      setOneClickProgress({
-        stage: 'claim',
-        active: true,
-        skippedClaim: false,
-        message: '准备执行闭环流程',
-        steps: ONE_CLICK_DEFAULT_STEPS
-      });
-      try {
-        if (input.stakeAmountSun <= 0n) {
-          setError('Stake amount must be greater than 0');
-          markStep('stake', 'failed', '质押数量必须大于 0', { at: Date.now() });
-          setOneClickProgress((prev) => ({
-            ...prev,
-            stage: 'failed',
-            active: false,
-            skippedClaim: false,
-            message: '失败：质押数量必须大于 0'
-          }));
-          return false;
-        }
-
       const distributeEvenly = (totalVotes: number, addresses: string[]) => {
         const unique = Array.from(new Set(addresses.map((a) => a.toLowerCase())))
           .map((lower) => addresses.find((a) => a.toLowerCase() === lower) || '')
@@ -414,7 +413,16 @@ export const useTronFinanceManager = ({
           .filter((v) => v.votes > 0);
       };
 
-      // 奖励为 0 时跳过 claim，避免无意义交易。
+      setFailedSnapshot(null);
+      setOneClickProgress({
+        stage: 'claim',
+        active: true,
+        skippedClaim: false,
+        message: '准备执行闭环流程',
+        steps: ONE_CLICK_DEFAULT_STEPS
+      });
+      try {
+        // 奖励为 0 时跳过 claim，避免无意义交易。
         if (reward.claimableSun > 0n) {
           markStep('claim', 'running', undefined, { at: Date.now() });
           setOneClickProgress((prev) => ({
@@ -448,14 +456,58 @@ export const useTronFinanceManager = ({
             message: '第 1 步：奖励为 0，已跳过领奖'
           }));
         }
+
+        let stakeAmountSun = input.stakeAmountSun;
+        if (input.stakeAllAfterClaim) {
+          if (!activeAddress) {
+            const reason = 'Active TRON address missing';
+            setError(reason);
+            markStep('stake', 'failed', reason, { at: Date.now() });
+            setOneClickProgress((prev) => ({
+              ...prev,
+              stage: 'failed',
+              active: false,
+              message: `失败：${reason}`
+            }));
+            return false;
+          }
+          const latestBalanceSun = await TronService.getBalance(rpcHost, activeAddress);
+          stakeAmountSun = latestBalanceSun - ONE_CLICK_TRX_RESERVE_SUN;
+          if (stakeAmountSun <= 0n) {
+            const reason = t('wallet.tron_finance_auto_low_balance_error');
+            setError(reason);
+            markStep('stake', 'failed', t('wallet.tron_finance_auto_low_balance_detail'), { at: Date.now() });
+            setOneClickProgress((prev) => ({
+              ...prev,
+              stage: 'failed',
+              active: false,
+              message: `失败：${reason}`
+            }));
+            return false;
+          }
+        } else if (stakeAmountSun <= 0n) {
+          setError('Stake amount must be greater than 0');
+          markStep('stake', 'failed', '质押数量必须大于 0', { at: Date.now() });
+          setOneClickProgress((prev) => ({
+            ...prev,
+            stage: 'failed',
+            active: false,
+            skippedClaim: false,
+            message: '失败：质押数量必须大于 0'
+          }));
+          return false;
+        }
+
         markStep('stake', 'running', undefined, { at: Date.now() });
         setOneClickProgress((prev) => ({
           ...prev,
           stage: 'stake',
           active: true,
-          message: '第 2 步：执行追加质押'
+          message: input.stakeAllAfterClaim
+            ? t('wallet.tron_finance_auto_step_stake')
+            : '第 2 步：执行追加质押'
         }));
-        const okStake = await stakeResource(input.stakeAmountSun, input.resource);
+        const okStake = await stakeResource(stakeAmountSun, input.resource);
         if (!okStake) {
           const reason = actionRef.current.error || '质押未完成';
           markStep('stake', 'failed', reason, { txid: actionRef.current.txid, at: Date.now() });
@@ -469,7 +521,7 @@ export const useTronFinanceManager = ({
         }
         markStep('stake', 'success', undefined, { txid: actionRef.current.txid, at: Date.now() });
 
-      const previousWitnesses = votes.map((v) => v.address).filter(Boolean);
+        const previousWitnesses = votes.map((v) => v.address).filter(Boolean);
         if (previousWitnesses.length === 0) {
           setError('No previous voted SR found. One-click re-vote requires historical voted witnesses.');
           markStep('vote', 'failed', '没有历史投票对象', { at: Date.now() });
@@ -482,7 +534,7 @@ export const useTronFinanceManager = ({
           return false;
         }
 
-      // 闭环语义：追加质押后，按“当前全部票权”重新平均投票给历史已投票对象。
+        // 闭环语义：追加质押后，按“当前全部票权”重新平均投票给历史已投票对象。
         const waitForVotingPower = async () => {
           const deadline = Date.now() + TRON_POWER_SYNC_TIMEOUT_MS;
           let last = await TronService.getAccountResources(rpcHost, activeAddress!);
@@ -563,7 +615,7 @@ export const useTronFinanceManager = ({
         return false;
       }
     },
-    [claimReward, stakeResource, voteWitnesses, reward.claimableSun, votes, setNotification, setError, rpcHost, activeAddress]
+    [claimReward, stakeResource, voteWitnesses, reward.claimableSun, votes, setNotification, setError, rpcHost, activeAddress, t]
   );
 
   const retryFailedStep = useCallback(async () => {

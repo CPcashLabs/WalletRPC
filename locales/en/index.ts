@@ -68,7 +68,11 @@ export const en: I18nSchema = {
     sync_updating: "Updating...",
     sync_failed_tap_refresh: "Update failed. Tap refresh."
     ,
-    import_invalid: "Invalid Key/Mnemonic"
+    import_invalid: "Invalid Key/Mnemonic",
+    tron_finance_auto_hint: "Leave blank to claim rewards first, then auto-restake using latest balance with 100 TRX reserved. If balance is below 100 TRX, enter a specific amount.",
+    tron_finance_auto_low_balance_error: "Auto mode requires reserving 100 TRX. Current balance is too low, please enter a specific stake amount.",
+    tron_finance_auto_low_balance_detail: "Auto mode balance below 100 TRX. Please enter a specific stake amount.",
+    tron_finance_auto_step_stake: "Step 2: Execute auto restake (100 TRX reserved)"
   },
   tx: {
     send: "Broadcast Transaction",

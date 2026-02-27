@@ -181,6 +181,7 @@ export const useEvmWallet = () => {
     activeAddress,
     tronPrivateKey,
     enabled: view === 'tron_finance',
+    t,
     setError,
     setNotification,
     addTransactionRecord: txMgr.addTransactionRecord,

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, RefreshCw } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
 import { ChainConfig, TronResourceType } from '../types';
+import { useTranslation } from '../../../contexts/LanguageContext';
 
 interface TronFinanceViewProps {
   activeChain: ChainConfig;
@@ -36,6 +37,7 @@ interface TronFinanceViewProps {
     runOneClick: (input: {
       resource: TronResourceType;
       stakeAmountSun: bigint;
+      stakeAllAfterClaim?: boolean;
       votes: Array<{ address: string; votes: number }>;
     }) => Promise<boolean>;
     oneClickProgress?: {
@@ -83,6 +85,7 @@ const distributeVotesEvenly = (totalVotes: number, addresses: string[]) => {
 };
 
 export const TronFinanceView: React.FC<TronFinanceViewProps> = ({ activeChain, isLoading, onBack, manager }) => {
+  const { t } = useTranslation();
   const [tab, setTab] = useState<'resource' | 'vote' | 'reward' | 'oneclick'>('resource');
   const [stakeAmount, setStakeAmount] = useState('');
   const [unstakeAmount, setUnstakeAmount] = useState('');
@@ -146,7 +149,7 @@ export const TronFinanceView: React.FC<TronFinanceViewProps> = ({ activeChain, i
 
       <div className="bg-white border border-slate-200 rounded-2xl p-4">
         <div className="text-[11px] font-black uppercase tracking-widest text-slate-500">Action Status</div>
-        <div className="mt-2 text-sm font-mono text-slate-800">{statusText}</div>
+        <div className="mt-2 text-sm font-mono text-slate-800 whitespace-pre-wrap break-all">{statusText}</div>
         {manager.action.txid && (
           <div className="mt-1 text-xs text-slate-500 break-all">txid: {manager.action.txid}</div>
         )}
@@ -372,17 +375,20 @@ export const TronFinanceView: React.FC<TronFinanceViewProps> = ({ activeChain, i
               <option value="BANDWIDTH">BANDWIDTH</option>
             </select>
           </div>
+          <div className="text-[11px] text-slate-500">{t('wallet.tron_finance_auto_hint')}</div>
           <Button
             disabled={isAnyBusy || manager.votes.length === 0}
             isLoading={isAnyBusy}
-            onClick={() =>
+            onClick={() => {
+              const stakeInput = oneClickStake.trim();
               manager.runOneClick({
                 resource: oneClickResource,
-                stakeAmountSun: toSun(oneClickStake),
+                stakeAmountSun: stakeInput ? toSun(stakeInput) : 0n,
+                ...(stakeInput ? {} : { stakeAllAfterClaim: true }),
                 // 闭环快捷固定使用“已投票对象”，由 manager 在 runOneClick 内完成平均分配
                 votes: []
-              })
-            }
+              });
+            }}
           >
             {isAnyBusy ? `处理中：${manager.oneClickProgress?.message || '请稍候'}` : '执行闭环快捷'}
           </Button>

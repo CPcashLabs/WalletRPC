@@ -68,7 +68,11 @@ export const zhSG: I18nSchema = {
     sync_updating: "更新中...",
     sync_failed_tap_refresh: "更新失败，请点击刷新"
     ,
-    import_invalid: "私钥/助记词无效"
+    import_invalid: "私钥/助记词无效",
+    tron_finance_auto_hint: "金额留空时：先领取奖励，再按最新总余额自动质押，并预留 100 TRX。若余额不足 100 TRX，请手动输入金额。",
+    tron_finance_auto_low_balance_error: "自动模式需预留 100 TRX；当前余额不足，请输入具体质押金额后重试。",
+    tron_finance_auto_low_balance_detail: "自动模式余额不足 100 TRX，请输入具体质押金额。",
+    tron_finance_auto_step_stake: "第 2 步：执行自动追加质押（已预留 100 TRX）"
   },
   tx: {
     send: "广播交易指令",

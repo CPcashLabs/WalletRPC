@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useTronFinanceManager } from '../../features/wallet/hooks/useTronFinanceManager';
+import { __tronFinanceTesting, useTronFinanceManager } from '../../features/wallet/hooks/useTronFinanceManager';
 import type { ChainConfig } from '../../features/wallet/types';
 import { TronService } from '../../services/tronService';
 
@@ -25,6 +25,15 @@ const witnessB = {
   address: 'TGzz8gjYiYRqpfmDwnLxfgPuLVNmpCswVp',
   name: 'Witness B',
   isActive: true
+};
+
+const TEST_I18N: Record<string, string> = {
+  'wallet.tron_finance_auto_low_balance_error':
+    'Auto mode requires reserving 100 TRX. Current balance is too low, please enter a specific stake amount.',
+  'wallet.tron_finance_auto_low_balance_detail':
+    'Auto mode balance below 100 TRX. Please enter a specific stake amount.',
+  'wallet.tron_finance_auto_step_stake':
+    'Step 2: Execute auto restake (100 TRX reserved)'
 };
 
 const setupTronServiceSpies = () => {
@@ -68,6 +77,7 @@ const buildHook = (overrides?: Partial<Parameters<typeof useTronFinanceManager>[
       activeAddress: 'TPYmHEhy5n8TCEfYGqW2rPxsghSfzghPDn',
       tronPrivateKey: '0x' + '11'.repeat(32),
       enabled: true,
+      t: (path: string) => TEST_I18N[path] || path,
       setError,
       setNotification,
       addTransactionRecord,
@@ -87,11 +97,13 @@ const buildHook = (overrides?: Partial<Parameters<typeof useTronFinanceManager>[
 
 describe('useTronFinanceManager', () => {
   beforeEach(() => {
+    __tronFinanceTesting.clearInitRefreshDedupe();
     setupTronServiceSpies();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    __tronFinanceTesting.clearInitRefreshDedupe();
   });
 
   it('初始化会刷新资源/奖励/投票并把投票地址映射到 witness 名称', async () => {
@@ -182,6 +194,63 @@ describe('useTronFinanceManager', () => {
     expect(result.current.oneClickProgress.stage).toBe('failed');
     expect(result.current.oneClickProgress.steps[1]?.status).toBe('failed');
     expect(setError).toHaveBeenCalledWith('Stake amount must be greater than 0');
+  });
+
+  it('runOneClick 自动金额模式会在领奖后按余额减去100TRX执行质押', async () => {
+    vi.mocked(TronService.getRewardInfo).mockResolvedValue({ claimableSun: 5_000_000n, canClaim: true });
+    vi.spyOn(TronService, 'getBalance').mockResolvedValue(350_000_000n);
+    const { result } = buildHook();
+
+    await waitFor(() => {
+      expect(result.current.reward.canClaim).toBe(true);
+    });
+
+    let ok = false;
+    await act(async () => {
+      ok = await result.current.runOneClick({
+        resource: 'ENERGY',
+        stakeAmountSun: 0n,
+        stakeAllAfterClaim: true,
+        votes: []
+      });
+    });
+
+    expect(ok).toBe(true);
+    expect(TronService.claimReward).toHaveBeenCalled();
+    expect(TronService.getBalance).toHaveBeenCalledWith('https://nile.trongrid.io', 'TPYmHEhy5n8TCEfYGqW2rPxsghSfzghPDn');
+    expect(TronService.stakeResource).toHaveBeenCalledWith(
+      'https://nile.trongrid.io',
+      '0x' + '11'.repeat(32),
+      250_000_000n,
+      'ENERGY'
+    );
+  });
+
+  it('runOneClick 自动金额模式在预留100TRX后余额不足时应失败', async () => {
+    vi.spyOn(TronService, 'getBalance').mockResolvedValue(99_000_000n);
+    const { result, setError } = buildHook();
+
+    await waitFor(() => {
+      expect(result.current.resources).not.toBeNull();
+    });
+
+    let ok = true;
+    await act(async () => {
+      ok = await result.current.runOneClick({
+        resource: 'ENERGY',
+        stakeAmountSun: 0n,
+        stakeAllAfterClaim: true,
+        votes: []
+      });
+    });
+
+    expect(ok).toBe(false);
+    expect(result.current.oneClickProgress.stage).toBe('failed');
+    expect(result.current.oneClickProgress.steps[1]?.status).toBe('failed');
+    expect(setError).toHaveBeenCalledWith(
+      'Auto mode requires reserving 100 TRX. Current balance is too low, please enter a specific stake amount.'
+    );
+    expect(TronService.stakeResource).not.toHaveBeenCalled();
   });
 
   it('缺少私钥时 claimReward 直接失败并提示', async () => {
@@ -867,4 +936,3 @@ describe('useTronFinanceManager', () => {
   });
 
 });
-

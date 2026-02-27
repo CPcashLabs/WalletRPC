@@ -4,8 +4,9 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TronFinanceView } from '../../features/wallet/components/TronFinanceView';
 import type { ChainConfig } from '../../features/wallet/types';
+import { LanguageProvider } from '../../contexts/LanguageContext';
 
-const wrap = (ui: React.ReactElement) => render(ui);
+const wrap = (ui: React.ReactElement) => render(<LanguageProvider>{ui}</LanguageProvider>);
 
 const tronChain: ChainConfig = {
   id: 2494104990,
@@ -228,7 +229,10 @@ describe('TronFinanceView UI', () => {
     const managerFailed = createManager();
     managerFailed.action = { phase: 'failed', error: 'boom' };
     const third = wrap(<TronFinanceView activeChain={tronChain} onBack={vi.fn()} manager={managerFailed} />);
-    expect(screen.getByText(/失败:\s*boom/)).toBeInTheDocument();
+    const failedText = screen.getByText(/失败:\s*boom/);
+    expect(failedText).toBeInTheDocument();
+    expect(failedText.className).toContain('break-all');
+    expect(failedText.className).toContain('whitespace-pre-wrap');
     third.unmount();
   });
 
@@ -250,6 +254,28 @@ describe('TronFinanceView UI', () => {
     expect(manager.runOneClick).toHaveBeenCalledWith({
       resource: 'BANDWIDTH',
       stakeAmountSun: 1250000n,
+      votes: []
+    });
+  });
+
+  it('one-click 金额留空时启用自动金额模式（领奖后余额并预留100TRX）', async () => {
+    const manager = createManager();
+    manager.oneClickProgress = undefined;
+    const user = userEvent.setup();
+    wrap(<TronFinanceView activeChain={tronChain} onBack={vi.fn()} manager={manager} />);
+
+    await user.click(screen.getByRole('button', { name: '闭环快捷' }));
+    expect(
+      await screen.findByText(
+        'Leave blank to claim rewards first, then auto-restake using latest balance with 100 TRX reserved. If balance is below 100 TRX, enter a specific amount.'
+      )
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '执行闭环快捷' }));
+
+    expect(manager.runOneClick).toHaveBeenCalledWith({
+      resource: 'ENERGY',
+      stakeAmountSun: 0n,
+      stakeAllAfterClaim: true,
       votes: []
     });
   });
@@ -297,4 +323,3 @@ describe('TronFinanceView UI', () => {
     expect(refreshBtn).toBeTruthy();
   });
 });
-

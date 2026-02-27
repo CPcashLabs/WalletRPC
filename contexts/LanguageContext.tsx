@@ -23,6 +23,27 @@ const LanguageContext = createContext<LanguageContextType | undefined>(undefined
 
 const LANGUAGE_STORAGE_KEY = 'walletrpc_lang';
 const LEGACY_LANGUAGE_STORAGE_KEY = 'nexus_lang';
+const DEFAULT_LANGUAGE: Language = 'en';
+
+const normalizeLanguage = (value: string | null | undefined): Language | null => {
+  if (!value) return null;
+  const normalized = String(value).trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized === 'zh-sg' || normalized.startsWith('zh')) return 'zh-SG';
+  if (normalized === 'en' || normalized.startsWith('en')) return 'en';
+  return null;
+};
+
+const detectLanguageFromNavigator = (): Language => {
+  if (typeof navigator === 'undefined') return DEFAULT_LANGUAGE;
+  const candidates = [navigator.language, ...(Array.isArray(navigator.languages) ? navigator.languages : [])]
+    .filter((v): v is string => typeof v === 'string' && v.trim().length > 0);
+  for (const candidate of candidates) {
+    const detected = normalizeLanguage(candidate);
+    if (detected) return detected;
+  }
+  return DEFAULT_LANGUAGE;
+};
 
 const safeLocalStorageGet = (key: string): string | null => {
   try {
@@ -43,14 +64,17 @@ const safeLocalStorageSet = (key: string, value: string): void => {
 };
 
 export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [language, setLanguage] = useState<Language>('en');
+  const [language, setLanguage] = useState<Language>(DEFAULT_LANGUAGE);
 
   useEffect(() => {
-    // 逻辑：优先读取用户持久化配置，实现状态锁定
-    const savedLang = safeLocalStorageGet(LANGUAGE_STORAGE_KEY) as Language | null;
-    const legacyLang = safeLocalStorageGet(LEGACY_LANGUAGE_STORAGE_KEY) as Language | null;
+    // 优先读取用户持久化配置，实现状态锁定
+    const savedRaw = safeLocalStorageGet(LANGUAGE_STORAGE_KEY);
+    const savedLang = normalizeLanguage(savedRaw);
+    const legacyRaw = safeLocalStorageGet(LEGACY_LANGUAGE_STORAGE_KEY);
+    const legacyLang = normalizeLanguage(legacyRaw);
     if (savedLang) {
       setLanguage(savedLang);
+      if (savedRaw !== savedLang) safeLocalStorageSet(LANGUAGE_STORAGE_KEY, savedLang);
     } else if (legacyLang) {
       // 兼容旧 key，并做一次性迁移
       setLanguage(legacyLang);
@@ -61,9 +85,33 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
         // ignore
       }
     } else {
-      const browserLang = navigator.language.toLowerCase();
-      if (browserLang.startsWith('zh')) setLanguage('zh-SG');
+      // 存储值异常时清理并回退到浏览器/系统语言
+      try {
+        if (savedRaw && typeof window !== 'undefined' && window.localStorage) {
+          window.localStorage.removeItem(LANGUAGE_STORAGE_KEY);
+        }
+        if (legacyRaw && typeof window !== 'undefined' && window.localStorage) {
+          window.localStorage.removeItem(LEGACY_LANGUAGE_STORAGE_KEY);
+        }
+      } catch {
+        // ignore
+      }
+      setLanguage(detectLanguageFromNavigator());
     }
+  }, []);
+
+  useEffect(() => {
+    const savedLang = normalizeLanguage(safeLocalStorageGet(LANGUAGE_STORAGE_KEY));
+    const legacyLang = normalizeLanguage(safeLocalStorageGet(LEGACY_LANGUAGE_STORAGE_KEY));
+    if (savedLang || legacyLang) return;
+    if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
+    const onLanguageChange = () => {
+      setLanguage(detectLanguageFromNavigator());
+    };
+    window.addEventListener('languagechange', onLanguageChange);
+    return () => {
+      window.removeEventListener('languagechange', onLanguageChange);
+    };
   }, []);
 
   const handleSetLanguage = useCallback((lang: Language) => {

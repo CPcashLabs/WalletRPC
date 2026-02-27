@@ -43,6 +43,10 @@ export interface I18nSchema {
     sync_updating: string;
     sync_failed_tap_refresh: string;
     import_invalid: string;
+    tron_finance_auto_hint: string;
+    tron_finance_auto_low_balance_error: string;
+    tron_finance_auto_low_balance_detail: string;
+    tron_finance_auto_step_stake: string;
   };
   tx: {
     send: string; send_btn: string; recipient: string; amount: string;
